@@ -68,6 +68,7 @@ from superset.connectors.sqla.models import (
     TableColumn,
 )
 from superset.dashboards.dao import DashboardDAO
+from superset.databases.filters import DatabaseFilter
 from superset.exceptions import (
     CertificateException,
     DatabaseNotFound,
@@ -109,7 +110,6 @@ from superset.views.base import (
     json_success,
     validate_sqlatable,
 )
-from superset.views.database.filters import DatabaseFilter
 from superset.views.utils import (
     _deserialize_results_payload,
     apply_display_max_row_limit,
@@ -1162,7 +1162,7 @@ class Superset(BaseSupersetView):  # pylint: disable=too-many-public-methods
             logger.warning("Stopped an unsafe database connection")
             return json_error_response(_(str(ex)), 400)
         except Exception as ex:  # pylint: disable=broad-except
-            logger.error("Unexpected error %s", type(ex).__name__)
+            logger.warning("Unexpected error %s", type(ex).__name__)
             return json_error_response(
                 _("Unexpected error occurred, please check your logs for details"), 400
             )
@@ -1431,12 +1431,16 @@ class Superset(BaseSupersetView):  # pylint: disable=too-many-public-methods
         """Warms up the cache for the slice or table.
 
         Note for slices a force refresh occurs.
+
+        In terms of the `extra_filters` these can be obtained from records in the JSON
+        encoded `logs.json` column associated with the `explore_json` action.
         """
         session = db.session()
         slice_id = request.args.get("slice_id")
         dashboard_id = request.args.get("dashboard_id")
         table_name = request.args.get("table_name")
         db_name = request.args.get("db_name")
+        extra_filters = request.args.get("extra_filters")
 
         if not slice_id and not (table_name and db_name):
             return json_error_response(
@@ -1482,8 +1486,10 @@ class Superset(BaseSupersetView):  # pylint: disable=too-many-public-methods
             try:
                 form_data = get_form_data(slc.id, use_slice_data=True)[0]
                 if dashboard_id:
-                    form_data["extra_filters"] = get_dashboard_extra_filters(
-                        slc.id, dashboard_id
+                    form_data["extra_filters"] = (
+                        json.loads(extra_filters)
+                        if extra_filters
+                        else get_dashboard_extra_filters(slc.id, dashboard_id)
                     )
 
                 obj = get_viz(
@@ -1652,6 +1658,13 @@ class Superset(BaseSupersetView):  # pylint: disable=too-many-public-methods
         )
 
         dashboard_data = dash.data
+        if is_feature_enabled("REMOVE_SLICE_LEVEL_LABEL_COLORS"):
+            # dashboard metadata has dashboard-level label_colors,
+            # so remove slice-level label_colors from its form_data
+            for slc in dashboard_data.get("slices"):
+                form_data = slc.get("form_data")
+                form_data.pop("label_colors", None)
+
         dashboard_data.update(
             {
                 "standalone_mode": standalone_mode,
@@ -1687,6 +1700,7 @@ class Superset(BaseSupersetView):  # pylint: disable=too-many-public-methods
             entry="dashboard",
             standalone_mode=standalone_mode,
             title=dash.dashboard_title,
+            custom_css=dashboard_data.get("css"),
             bootstrap_data=json.dumps(
                 bootstrap_data, default=utils.pessimistic_json_iso_dttm_ser
             ),
@@ -1764,7 +1778,7 @@ class Superset(BaseSupersetView):  # pylint: disable=too-many-public-methods
     @expose("/get_or_create_table/", methods=["POST"])
     @event_logger.log_this
     def sqllab_table_viz(self) -> FlaskResponse:  # pylint: disable=no-self-use
-        """ Gets or creates a table object with attributes passed to the API.
+        """Gets or creates a table object with attributes passed to the API.
 
         It expects the json with params:
         * datasourceName - e.g. table name, required
@@ -1806,8 +1820,14 @@ class Superset(BaseSupersetView):  # pylint: disable=too-many-public-methods
     @event_logger.log_this
     def sqllab_viz(self) -> FlaskResponse:  # pylint: disable=no-self-use
         data = json.loads(request.form["data"])
-        table_name = data["datasourceName"]
-        database_id = data["dbId"]
+        try:
+            table_name = data["datasourceName"]
+            database_id = data["dbId"]
+        except KeyError:
+            return json_error_response("Missing required fields", status=400)
+        database = db.session.query(Database).get(database_id)
+        if not database:
+            return json_error_response("Database not found", status=400)
         table = (
             db.session.query(SqlaTable)
             .filter_by(database_id=database_id, table_name=table_name)
@@ -1815,7 +1835,7 @@ class Superset(BaseSupersetView):  # pylint: disable=too-many-public-methods
         )
         if not table:
             table = SqlaTable(table_name=table_name, owners=[g.user])
-        table.database_id = database_id
+        table.database = database
         table.schema = data.get("schema")
         table.template_params = data.get("templateParams")
         table.is_sqllab_view = True
@@ -2455,14 +2475,15 @@ class Superset(BaseSupersetView):  # pylint: disable=too-many-public-methods
 
         :returns: Response with list of sql query dicts
         """
-        query = db.session.query(Query)
         if security_manager.can_access_all_queries():
             search_user_id = request.args.get("user_id")
-        elif (
-            request.args.get("user_id") is not None
-            and request.args.get("user_id") != g.user.get_user_id()
-        ):
-            return Response(status=403, mimetype="application/json")
+        elif request.args.get("user_id") is not None:
+            try:
+                search_user_id = int(cast(int, request.args.get("user_id")))
+            except ValueError:
+                return Response(status=400, mimetype="application/json")
+            if search_user_id != g.user.get_user_id():
+                return Response(status=403, mimetype="application/json")
         else:
             search_user_id = g.user.get_user_id()
         database_id = request.args.get("database_id")
@@ -2472,6 +2493,7 @@ class Superset(BaseSupersetView):  # pylint: disable=too-many-public-methods
         from_time = request.args.get("from")
         to_time = request.args.get("to")
 
+        query = db.session.query(Query)
         if search_user_id:
             # Filter on user_id
             query = query.filter(Query.user_id == search_user_id)
@@ -2486,7 +2508,7 @@ class Superset(BaseSupersetView):  # pylint: disable=too-many-public-methods
 
         if search_text:
             # Filter on search text
-            query = query.filter(Query.sql.like("%{}%".format(search_text)))
+            query = query.filter(Query.sql.like(f"%{search_text}%"))
 
         if from_time:
             query = query.filter(Query.start_time > int(from_time))
@@ -2516,6 +2538,8 @@ class Superset(BaseSupersetView):  # pylint: disable=too-many-public-methods
     def welcome(self) -> FlaskResponse:
         """Personalized welcome page"""
         if not g.user or not g.user.get_id():
+            if conf.get("PUBLIC_ROLE_LIKE_GAMMA", False) or conf["PUBLIC_ROLE_LIKE"]:
+                return self.render_template("superset/public_welcome.html")
             return redirect(appbuilder.get_url_for_login)
 
         welcome_dashboard_id = (
@@ -2532,8 +2556,8 @@ class Superset(BaseSupersetView):  # pylint: disable=too-many-public-methods
         }
 
         return self.render_template(
-            "superset/welcome.html",
-            entry="welcome",
+            "superset/crud_views.html",
+            entry="crudViews",
             bootstrap_data=json.dumps(
                 payload, default=utils.pessimistic_json_iso_dttm_ser
             ),

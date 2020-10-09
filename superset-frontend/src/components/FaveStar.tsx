@@ -17,7 +17,7 @@
  * under the License.
  */
 import React from 'react';
-import { t } from '@superset-ui/translation';
+import { t } from '@superset-ui/core';
 import TooltipWrapper from './TooltipWrapper';
 import Icon from './Icon';
 
@@ -59,9 +59,8 @@ export default class FaveStar extends React.PureComponent<FaveStarProps> {
                   ? 'favorite-selected'
                   : 'favorite-unselected'
               }
-              viewBox="0 0 16 15"
               width={this.props.width || 20}
-              height="auto"
+              height={this.props.height || 'auto'}
             />
           </a>
         </TooltipWrapper>
@@ -78,7 +77,6 @@ export default class FaveStar extends React.PureComponent<FaveStarProps> {
           name={
             this.props.isStarred ? 'favorite-selected' : 'favorite-unselected'
           }
-          viewBox="0 0 16 15"
           width={this.props.width || 20}
           height={this.props.height || 'auto'}
         />

@@ -71,6 +71,10 @@ datasource_id_description = (
     "A complete datasource identification needs `datasouce_id` "
     "and `datasource_type`."
 )
+datasource_uid_description = (
+    "The uid of the dataset/datasource this new chart will use. "
+    "A complete datasource identification needs `datasouce_uid` "
+)
 datasource_type_description = (
     "The type of dataset/datasource identified on `datasource_id`."
 )
@@ -714,6 +718,7 @@ class ChartDataQueryObjectSchema(Schema):
     )
     groupby = fields.List(
         fields.String(description="Columns by which to group the query.",),
+        allow_none=True,
     )
     metrics = fields.List(
         fields.Raw(),
@@ -777,12 +782,20 @@ class ChartDataQueryObjectSchema(Schema):
     order_desc = fields.Boolean(
         description="Reverse order. Default: `false`", required=False
     )
-    extras = fields.Nested(ChartDataExtrasSchema, required=False)
-    columns = fields.List(fields.String(), description="",)
+    extras = fields.Nested(
+        ChartDataExtrasSchema,
+        description="Extra parameters to add to the query.",
+        required=False,
+    )
+    columns = fields.List(
+        fields.String(),
+        description="Columns which to select in the query.",
+        allow_none=True,
+    )
     orderby = fields.List(
         fields.List(fields.Raw()),
         description="Expects a list of lists where the first element is the column "
-        "name which to sort by, and the second element is a boolean ",
+        "name which to sort by, and the second element is a boolean.",
         example=[["my_col_1", False], ["my_col_2", True]],
     )
     where = fields.String(
@@ -797,7 +810,7 @@ class ChartDataQueryObjectSchema(Schema):
         deprecated=True,
     )
     having_filters = fields.List(
-        fields.Dict(),
+        fields.Nested(ChartDataFilterSchema),
         description="HAVING filters to be added to legacy Druid datasource queries. "
         "This field is deprecated and should be passed to `extras` "
         "as `having_druid`.",

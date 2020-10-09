@@ -34,11 +34,10 @@ from werkzeug.local import LocalProxy
 
 from superset.utils.cache_manager import CacheManager
 from superset.utils.feature_flag_manager import FeatureFlagManager
+from superset.utils.machine_auth import MachineAuthProviderFactory
 
 if TYPE_CHECKING:
-    from superset.jinja_context import (  # pylint: disable=unused-import
-        BaseTemplateProcessor,
-    )
+    from superset.jinja_context import BaseTemplateProcessor
 
 
 class JinjaContextManager:
@@ -49,7 +48,10 @@ class JinjaContextManager:
             "relativedelta": relativedelta,
             "time": time,
             "timedelta": timedelta,
-            "uuid": uuid,
+            "uuid1": uuid.uuid1,
+            "uuid3": uuid.uuid3,
+            "uuid4": uuid.uuid4,
+            "uuid5": uuid.uuid5,
         }
         self._template_processors: Dict[str, Type["BaseTemplateProcessor"]] = {}
 
@@ -139,6 +141,7 @@ _event_logger: Dict[str, Any] = {}
 event_logger = LocalProxy(lambda: _event_logger.get("event_logger"))
 feature_flag_manager = FeatureFlagManager()
 jinja_context_manager = JinjaContextManager()
+machine_auth_provider_factory = MachineAuthProviderFactory()
 manifest_processor = UIManifestProcessor(APP_DIR)
 migrate = Migrate()
 results_backend_manager = ResultsBackendManager()

@@ -25,6 +25,7 @@ from marshmallow import ValidationError
 
 from superset.connectors.sqla.models import SqlaTable
 from superset.constants import RouteMethod
+from superset.databases.filters import DatabaseFilter
 from superset.datasets.commands.create import CreateDatasetCommand
 from superset.datasets.commands.delete import DeleteDatasetCommand
 from superset.datasets.commands.exceptions import (
@@ -51,7 +52,6 @@ from superset.views.base_api import (
     RelatedFieldFilter,
     statsd_metrics,
 )
-from superset.views.database.filters import DatabaseFilter
 from superset.views.filters import FilterRelatedOwners
 
 logger = logging.getLogger(__name__)
@@ -67,6 +67,7 @@ class DatasetRestApi(BaseSupersetModelRestApi):
     include_route_methods = RouteMethod.REST_MODEL_VIEW_CRUD_SET | {
         RouteMethod.EXPORT,
         RouteMethod.RELATED,
+        RouteMethod.DISTINCT,
         "refresh",
         "related_objects",
     }
@@ -151,6 +152,7 @@ class DatasetRestApi(BaseSupersetModelRestApi):
     }
     filter_rel_fields = {"database": [["id", DatabaseFilter, lambda: []]]}
     allowed_rel_fields = {"database", "owners"}
+    allowed_distinct_fields = {"schema"}
 
     openapi_spec_component_schemas = (DatasetRelatedObjectsResponse,)
 
@@ -214,9 +216,7 @@ class DatasetRestApi(BaseSupersetModelRestApi):
     @protect()
     @safe
     @statsd_metrics
-    def put(  # pylint: disable=too-many-return-statements, arguments-differ
-        self, pk: int
-    ) -> Response:
+    def put(self, pk: int) -> Response:
         """Changes a Dataset
         ---
         put:
@@ -268,24 +268,25 @@ class DatasetRestApi(BaseSupersetModelRestApi):
             return self.response_400(message=error.messages)
         try:
             changed_model = UpdateDatasetCommand(g.user, pk, item).run()
-            return self.response(200, id=changed_model.id, result=item)
+            response = self.response(200, id=changed_model.id, result=item)
         except DatasetNotFoundError:
-            return self.response_404()
+            response = self.response_404()
         except DatasetForbiddenError:
-            return self.response_403()
+            response = self.response_403()
         except DatasetInvalidError as ex:
-            return self.response_422(message=ex.normalized_messages())
+            response = self.response_422(message=ex.normalized_messages())
         except DatasetUpdateFailedError as ex:
             logger.error(
                 "Error updating model %s: %s", self.__class__.__name__, str(ex)
             )
-            return self.response_422(message=str(ex))
+            response = self.response_422(message=str(ex))
+        return response
 
     @expose("/<pk>", methods=["DELETE"])
     @protect()
     @safe
     @statsd_metrics
-    def delete(self, pk: int) -> Response:  # pylint: disable=arguments-differ
+    def delete(self, pk: int) -> Response:
         """Deletes a Dataset
         ---
         delete:

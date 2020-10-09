@@ -19,7 +19,6 @@
 import React from 'react';
 import PropTypes from 'prop-types';
 import {
-  Label,
   Row,
   Col,
   FormControl,
@@ -27,9 +26,9 @@ import {
   OverlayTrigger,
   Tooltip,
 } from 'react-bootstrap';
-import { t } from '@superset-ui/translation';
-import { getChartMetadataRegistry } from '@superset-ui/chart';
+import { t, getChartMetadataRegistry } from '@superset-ui/core';
 
+import Label from 'src/components/Label';
 import ControlHeader from '../ControlHeader';
 import './VizTypeControl.less';
 
@@ -74,7 +73,6 @@ const DEFAULT_ORDER = [
   'line_multi',
   'treemap',
   'box_plot',
-  'separator',
   'sunburst',
   'sankey',
   'word_cloud',
@@ -85,7 +83,6 @@ const DEFAULT_ORDER = [
   'bubble',
   'deck_geojson',
   'horizon',
-  'markup',
   'deck_multi',
   'compare',
   'partition',
@@ -95,7 +92,6 @@ const DEFAULT_ORDER = [
   'world_map',
   'paired_ttest',
   'para',
-  'iframe',
   'country_map',
 ];
 
@@ -124,7 +120,7 @@ export default class VizTypeControl extends React.PureComponent {
   }
 
   toggleModal() {
-    this.setState({ showModal: !this.state.showModal });
+    this.setState(prevState => ({ showModal: !prevState.showModal }));
   }
 
   changeSearch(event) {
@@ -216,7 +212,7 @@ export default class VizTypeControl extends React.PureComponent {
           onHide={this.toggleModal}
           onEnter={this.focusSearch}
           onExit={this.setSearchRef}
-          bsSize="lg"
+          bsSize="large"
         >
           <Modal.Header closeButton>
             <Modal.Title>{t('Select a visualization type')}</Modal.Title>

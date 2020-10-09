@@ -20,7 +20,7 @@ import React from 'react';
 import PropTypes from 'prop-types';
 import moment from 'moment';
 import { Dropdown, MenuItem } from 'react-bootstrap';
-import { t } from '@superset-ui/translation';
+import { t } from '@superset-ui/core';
 import URLShortLinkModal from '../../components/URLShortLinkModal';
 import downloadAsImage from '../../utils/downloadAsImage';
 import getDashboardUrl from '../util/getDashboardUrl';
@@ -103,9 +103,9 @@ class SliceHeaderControls extends React.PureComponent {
   }
 
   toggleControls() {
-    this.setState({
-      showControls: !this.state.showControls,
-    });
+    this.setState(prevState => ({
+      showControls: !prevState.showControls,
+    }));
   }
 
   handleToggleFullSize() {
@@ -158,20 +158,14 @@ class SliceHeaderControls extends React.PureComponent {
             </MenuItem>
           )}
 
-          {this.props.sliceCanEdit && (
-            <MenuItem href={slice.edit_url} target="_blank">
-              {t('Edit chart metadata')}
+          {this.props.supersetCanExplore && (
+            <MenuItem onClick={this.exploreChart}>
+              {t('Explore chart')}
             </MenuItem>
           )}
 
           {this.props.supersetCanCSV && (
             <MenuItem onClick={this.exportCSV}>{t('Export CSV')}</MenuItem>
-          )}
-
-          {this.props.supersetCanExplore && (
-            <MenuItem onClick={this.exploreChart}>
-              {t('Explore chart')}
-            </MenuItem>
           )}
 
           <MenuItem onClick={this.handleToggleFullSize}>{resizeLabel}</MenuItem>

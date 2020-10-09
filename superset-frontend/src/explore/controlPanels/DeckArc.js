@@ -16,14 +16,10 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { t } from '@superset-ui/translation';
-import {
-  validateNonEmpty,
-  legacyValidateInteger,
-} from '@superset-ui/validator';
-import timeGrainSqlaAnimationOverrides from './timeGrainSqlaAnimationOverrides';
-import { columnChoices, PRIMARY_COLOR } from '../controls';
-import { formatSelectOptions } from '../../modules/utils';
+import { t, validateNonEmpty, legacyValidateInteger } from '@superset-ui/core';
+import timeGrainSqlaAnimationOverrides from 'src/explore/controlPanels/timeGrainSqlaAnimationOverrides';
+import { columnChoices, PRIMARY_COLOR } from 'src/explore/controls';
+import { formatSelectOptions } from 'src/modules/utils';
 import {
   filterNulls,
   autozoom,

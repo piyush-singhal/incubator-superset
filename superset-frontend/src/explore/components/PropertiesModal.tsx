@@ -18,26 +18,25 @@
  */
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  Button,
   Modal,
   Row,
   Col,
   FormControl,
   FormGroup,
-  // @ts-ignore
+  FormControlProps,
 } from 'react-bootstrap';
-// @ts-ignore
+import Button from 'src/components/Button';
 import Dialog from 'react-bootstrap-dialog';
 import { OptionsType } from 'react-select/src/types';
 import { AsyncSelect } from 'src/components/Select';
 import rison from 'rison';
-import { t } from '@superset-ui/translation';
-import { SupersetClient } from '@superset-ui/connection';
+import { t, SupersetClient } from '@superset-ui/core';
 import Chart from 'src/types/Chart';
 import FormLabel from 'src/components/FormLabel';
 import getClientErrorObject from '../../utils/getClientErrorObject';
 
 export type Slice = {
+  id?: number;
   slice_id: number;
   slice_name: string;
   description: string | null;
@@ -59,21 +58,6 @@ export type WrapperProps = InternalProps & {
   show: boolean;
   animation?: boolean; // for the modal
 };
-
-export default function PropertiesModalWrapper({
-  show,
-  onHide,
-  animation,
-  slice,
-  onSave,
-}: WrapperProps) {
-  // The wrapper is a separate component so that hooks only run when the modal opens
-  return (
-    <Modal show={show} onHide={onHide} animation={animation} bsSize="large">
-      <PropertiesModal slice={slice} onHide={onHide} onSave={onSave} />
-    </Modal>
-  );
-}
 
 function PropertiesModal({ slice, onHide, onSave }: InternalProps) {
   const [submitting, setSubmitting] = useState(false);
@@ -191,10 +175,9 @@ function PropertiesModal({ slice, onHide, onSave }: InternalProps) {
                 type="text"
                 bsSize="sm"
                 value={name}
-                // @ts-ignore
-                onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-                  setName(event.target.value)
-                }
+                onChange={(
+                  event: React.FormEvent<FormControl & FormControlProps>,
+                ) => setName((event.currentTarget?.value as string) ?? '')}
               />
             </FormGroup>
             <FormGroup>
@@ -205,9 +188,10 @@ function PropertiesModal({ slice, onHide, onSave }: InternalProps) {
                 componentClass="textarea"
                 bsSize="sm"
                 value={description}
-                // @ts-ignore
-                onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-                  setDescription(event.target.value)
+                onChange={(
+                  event: React.FormEvent<FormControl & FormControlProps>,
+                ) =>
+                  setDescription((event.currentTarget?.value as string) ?? '')
                 }
                 style={{ maxWidth: '100%' }}
               />
@@ -227,14 +211,17 @@ function PropertiesModal({ slice, onHide, onSave }: InternalProps) {
                 type="text"
                 bsSize="sm"
                 value={cacheTimeout}
-                // @ts-ignore
-                onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-                  setCacheTimeout(event.target.value.replace(/[^0-9]/, ''))
-                }
+                onChange={(
+                  event: React.FormEvent<FormControl & FormControlProps>,
+                ) => {
+                  const targetValue =
+                    (event.currentTarget?.value as string) ?? '';
+                  setCacheTimeout(targetValue.replace(/[^0-9]/, ''));
+                }}
               />
               <p className="help-block">
                 {t(
-                  'Duration (in seconds) of the caching timeout for this chart. Note this defaults to the datasource/table timeout if undefined.',
+                  "Duration (in seconds) of the caching timeout for this chart. Note this defaults to the dataset's timeout if undefined.",
                 )}
               </p>
             </FormGroup>
@@ -262,20 +249,35 @@ function PropertiesModal({ slice, onHide, onSave }: InternalProps) {
         </Row>
       </Modal.Body>
       <Modal.Footer>
-        <Button type="button" bsSize="sm" onClick={onHide}>
+        <Button type="button" buttonSize="sm" onClick={onHide} cta>
           {t('Cancel')}
         </Button>
         <Button
           type="submit"
-          bsSize="sm"
-          bsStyle="primary"
-          className="m-r-5"
+          buttonSize="sm"
+          buttonStyle="primary"
           disabled={!owners || submitting || !name}
+          cta
         >
           {t('Save')}
         </Button>
         <Dialog ref={errorDialog} />
       </Modal.Footer>
     </form>
+  );
+}
+
+export default function PropertiesModalWrapper({
+  show,
+  onHide,
+  animation,
+  slice,
+  onSave,
+}: WrapperProps) {
+  // The wrapper is a separate component so that hooks only run when the modal opens
+  return (
+    <Modal show={show} onHide={onHide} animation={animation} bsSize="large">
+      <PropertiesModal slice={slice} onHide={onHide} onSave={onSave} />
+    </Modal>
   );
 }
