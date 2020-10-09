@@ -54,12 +54,13 @@ const propTypes = {
   dashboardLayout: PropTypes.object.isRequired,
   deleteTopLevelTabs: PropTypes.func.isRequired,
   editMode: PropTypes.bool.isRequired,
-  showBuilderPane: PropTypes.func.isRequired,
+  showBuilderPane: PropTypes.func,
   colorScheme: PropTypes.string,
   setColorSchemeAndUnsavedChanges: PropTypes.func.isRequired,
   handleComponentDrop: PropTypes.func.isRequired,
   directPathToChild: PropTypes.arrayOf(PropTypes.string),
   setDirectPathToChild: PropTypes.func.isRequired,
+  setMountedTab: PropTypes.func.isRequired,
 };
 
 const defaultProps = {
@@ -247,6 +248,12 @@ class DashboardBuilder extends React.Component {
                       <TabPane
                         key={index === 0 ? DASHBOARD_GRID_ID : id}
                         eventKey={index}
+                        mountOnEnter
+                        unmountOnExit={false}
+                        onEntering={() => {
+                          // Entering current tab, DOM is visible and has dimension
+                          this.props.setMountedTab(id);
+                        }}
                       >
                         <DashboardGrid
                           gridComponent={dashboardLayout[id]}

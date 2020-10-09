@@ -17,8 +17,8 @@
  * under the License.
  */
 import React from 'react';
-import { t } from '@superset-ui/translation';
-import { formatSelectOptions } from '../../modules/utils';
+import { t } from '@superset-ui/core';
+import { formatSelectOptions } from 'src/modules/utils';
 
 export const druidTimeSeries = {
   label: t('Time'),
@@ -28,7 +28,7 @@ export const druidTimeSeries = {
 };
 
 export const datasourceAndVizType = {
-  label: t('Datasource & Chart Type'),
+  label: t('Dataset & Chart Type'),
   expanded: true,
   controlSetRows: [
     ['datasource'],

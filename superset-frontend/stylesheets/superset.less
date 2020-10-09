@@ -20,7 +20,7 @@
 @import './less/variables.less';
 @import './less/index.less';
 
-@datasource-sql-expression-width: 450px;
+@datasource-sql-expression-width: 315px;
 
 .alert.alert-danger > .debugger {
   color: @danger;
@@ -91,11 +91,6 @@ input[type='checkbox'] {
 .header span.label {
   margin-left: 5px;
   margin-right: 5px;
-}
-
-#timer {
-  width: 80px;
-  text-align: right;
 }
 
 .notbtn {
@@ -196,6 +191,10 @@ table.table-no-hover tr:hover {
   background-color: initial;
 }
 
+.editable-title {
+  margin-right: 8px;
+}
+
 .editable-title input {
   outline: none;
   background: transparent;
@@ -225,6 +224,7 @@ table.table-no-hover tr:hover {
   font-family: @font-family-monospace;
   display: inline-block;
   min-width: @datasource-sql-expression-width;
+  width: 100%;
 }
 
 .editable-title.datasource-sql-expression input {
@@ -319,6 +319,10 @@ table.table-no-hover tr:hover {
   margin-top: 10px;
 }
 
+.m-t-20 {
+  margin-top: 20px;
+}
+
 .m-b-10 {
   margin-bottom: 10px;
 }
@@ -361,9 +365,6 @@ table.table-no-hover tr:hover {
 }
 
 /** table on both sides of the gap **/
-.panel .table-responsive {
-  padding: 0 1%;
-}
 @media screen and (max-width: 767px) {
   .panel .table-responsive {
     width: 98%;
@@ -525,17 +526,6 @@ tr.reactable-column-header th.reactable-header-sortable {
   padding-right: 17px;
 }
 
-.fave-unfave-icon {
-  .fa-star-o,
-  .fa-star {
-    &,
-    &:hover,
-    &:active {
-      color: @almost-black;
-    }
-  }
-}
-
 .metric-edit-popover-label-input {
   border-radius: @border-radius-large;
   height: 30px;
@@ -595,4 +585,8 @@ input[type='radio']:checked:after {
 }
 hr {
   border-top: 1px solid @gray-light;
+}
+.ace_gutter-cell.ace_error {
+  background-image: url('../images/icons/error_solid_small_red.svg') !important;
+  background-position: -2px center !important;
 }

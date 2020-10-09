@@ -25,7 +25,7 @@ import Button from 'src/components/Button';
 
 describe('QueryAndSaveButtons', () => {
   const defaultProps = {
-    canAdd: 'True',
+    canAdd: true,
     onQuery: sinon.spy(),
   };
 
@@ -54,7 +54,7 @@ describe('QueryAndSaveButtons', () => {
     });
 
     it('calls onQuery when query button is clicked', () => {
-      const queryButton = wrapper.find('.query');
+      const queryButton = wrapper.find('[data-test="run-query-button"]');
       queryButton.simulate('click');
       expect(defaultProps.onQuery.called).toBe(true);
     });

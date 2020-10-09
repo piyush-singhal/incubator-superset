@@ -23,7 +23,7 @@ import { Tabs, Tab } from 'react-bootstrap';
 import { StickyContainer, Sticky } from 'react-sticky';
 import { ParentSize } from '@vx/responsive';
 
-import { t } from '@superset-ui/translation';
+import { t } from '@superset-ui/core';
 
 import NewColumn from './gridComponents/new/NewColumn';
 import NewDivider from './gridComponents/new/NewDivider';
@@ -47,7 +47,7 @@ class BuilderComponentPane extends React.PureComponent {
   renderTabs(height) {
     const { isSticky } = this.props;
     return (
-      <Tabs className="m-t-10 tabs-components">
+      <Tabs className="m-t-10 tabs-components" id="tabs">
         <Tab eventKey={1} title={t('Components')}>
           <NewTabs />
           <NewRow />
@@ -64,6 +64,7 @@ class BuilderComponentPane extends React.PureComponent {
       </Tabs>
     );
   }
+
   render() {
     const { topOffset } = this.props;
     return (

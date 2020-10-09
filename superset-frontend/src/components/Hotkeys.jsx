@@ -28,7 +28,7 @@ const propTypes = {
       descr: PropTypes.string.isRequired,
       func: PropTypes.func,
     }),
-  ).isRequired,
+  ),
   header: PropTypes.string,
   placement: PropTypes.string,
 };
@@ -45,6 +45,7 @@ export default class Hotkeys extends React.PureComponent {
       }
     });
   }
+
   renderPopover() {
     const { header, hotkeys } = this.props;
     return (
@@ -70,6 +71,7 @@ export default class Hotkeys extends React.PureComponent {
       </Popover>
     );
   }
+
   render() {
     return (
       <OverlayTrigger

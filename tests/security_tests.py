@@ -15,15 +15,21 @@
 # specific language governing permissions and limitations
 # under the License.
 # isort:skip_file
+import datetime
 import inspect
+import re
 import unittest
 from unittest.mock import Mock, patch
 
+import pandas as pd
 import prison
-from flask import g
+import pytest
+import random
 
-import tests.test_app
-from superset import app, appbuilder, db, security_manager, viz
+from flask import current_app, g
+from sqlalchemy import Float, Date, String
+
+from superset import app, appbuilder, db, security_manager, viz, ConnectorRegistry
 from superset.connectors.druid.models import DruidCluster, DruidDatasource
 from superset.connectors.sqla.models import RowLevelSecurityFilter, SqlaTable
 from superset.errors import ErrorLevel, SupersetError, SupersetErrorType
@@ -34,6 +40,12 @@ from superset.sql_parse import Table
 from superset.utils.core import get_example_database
 
 from .base_tests import SupersetTestCase
+from .dashboard_utils import (
+    create_table_for_dashboard,
+    create_slice,
+    create_dashboard,
+)
+from .fixtures.unicode_dashboard import load_unicode_dashboard_with_slice
 
 
 def get_perm_tuples(role_name):
@@ -531,6 +543,52 @@ class TestRolePermission(SupersetTestCase):
         )  # wb_health_population slice, has access
         self.assertNotIn("Girl Name Cloud", data)  # birth_names slice, no access
 
+    def test_public_sync_role_data_perms(self):
+        """
+        Security: Tests if the sync role method preserves data access permissions
+        if they already exist on a public role.
+        Also check that non data access permissions are removed
+        """
+        table = db.session.query(SqlaTable).filter_by(table_name="birth_names").one()
+        self.grant_public_access_to_table(table)
+        public_role = security_manager.get_public_role()
+        unwanted_pvm = security_manager.find_permission_view_menu(
+            "menu_access", "Security"
+        )
+        public_role.permissions.append(unwanted_pvm)
+        db.session.commit()
+
+        security_manager.sync_role_definitions()
+        public_role = security_manager.get_public_role()
+        public_role_resource_names = [
+            permission.view_menu.name for permission in public_role.permissions
+        ]
+
+        assert table.get_perm() in public_role_resource_names
+        assert "Security" not in public_role_resource_names
+
+        # Cleanup
+        self.revoke_public_access_to_table(table)
+
+    def test_public_sync_role_builtin_perms(self):
+        """
+        Security: Tests public role creation based on a builtin role
+        """
+        current_app.config["PUBLIC_ROLE_LIKE"] = "TestRole"
+
+        security_manager.sync_role_definitions()
+        public_role = security_manager.get_public_role()
+        public_role_resource_names = [
+            [permission.view_menu.name, permission.permission.name]
+            for permission in public_role.permissions
+        ]
+        for pvm in current_app.config["FAB_ROLES"]["TestRole"]:
+            assert pvm in public_role_resource_names
+
+        # Cleanup
+        current_app.config["PUBLIC_ROLE_LIKE"] = "Gamma"
+        security_manager.sync_role_definitions()
+
     def test_sqllab_gamma_user_schema_access_to_sqllab(self):
         session = db.session
 
@@ -596,8 +654,8 @@ class TestRolePermission(SupersetTestCase):
         self.assertIn(("can_explore_json", "Superset"), perm_set)
         self.assertIn(("can_userinfo", "UserDBModelView"), perm_set)
         self.assert_can_menu("Databases", perm_set)
-        self.assert_can_menu("Tables", perm_set)
-        self.assert_can_menu("Sources", perm_set)
+        self.assert_can_menu("Datasets", perm_set)
+        self.assert_can_menu("Data", perm_set)
         self.assert_can_menu("Charts", perm_set)
         self.assert_can_menu("Dashboards", perm_set)
 
@@ -724,7 +782,10 @@ class TestRolePermission(SupersetTestCase):
 
     def test_gamma_permissions_basic(self):
         self.assert_can_gamma(get_perm_tuples("Gamma"))
-        self.assert_cannot_alpha(get_perm_tuples("Alpha"))
+        self.assert_cannot_alpha(get_perm_tuples("Gamma"))
+
+    def test_public_permissions_basic(self):
+        self.assert_can_gamma(get_perm_tuples("Public"))
 
     @unittest.skipUnless(
         SupersetTestCase.is_module_installed("pydruid"), "pydruid not installed"
@@ -787,6 +848,9 @@ class TestRolePermission(SupersetTestCase):
         # make sure that user can create slices and dashboards
         assert_can_all("SliceModelView")
         assert_can_all("DashboardModelView")
+
+        assert_cannot_write("UserDBModelView")
+        assert_cannot_write("RoleModelView")
 
         self.assertIn(("can_add_slices", "Superset"), gamma_perm_set)
         self.assertIn(("can_copy_dash", "Superset"), gamma_perm_set)
@@ -957,85 +1021,159 @@ class TestRowLevelSecurity(SupersetTestCase):
     """
 
     rls_entry = None
+    query_obj = dict(
+        groupby=[],
+        metrics=[],
+        filter=[],
+        is_timeseries=False,
+        columns=["value"],
+        granularity=None,
+        from_dttm=None,
+        to_dttm=None,
+        extras={},
+    )
+    NAME_AB_ROLE = "NameAB"
+    NAME_Q_ROLE = "NameQ"
+    NAMES_A_REGEX = re.compile(r"name like 'A%'")
+    NAMES_B_REGEX = re.compile(r"name like 'B%'")
+    NAMES_Q_REGEX = re.compile(r"name like 'Q%'")
+    BASE_FILTER_REGEX = re.compile(r"gender = 'boy'")
 
     def setUp(self):
         session = db.session
 
-        # Create the RowLevelSecurityFilter
-        self.rls_entry = RowLevelSecurityFilter()
-        self.rls_entry.tables.extend(
+        # Create roles
+        security_manager.add_role(self.NAME_AB_ROLE)
+        security_manager.add_role(self.NAME_Q_ROLE)
+        gamma_user = security_manager.find_user(username="gamma")
+        gamma_user.roles.append(security_manager.find_role(self.NAME_AB_ROLE))
+        gamma_user.roles.append(security_manager.find_role(self.NAME_Q_ROLE))
+        self.create_user_with_roles("NoRlsRoleUser", ["Gamma"])
+        session.commit()
+
+        # Create regular RowLevelSecurityFilter (energy_usage, unicode_test)
+        self.rls_entry1 = RowLevelSecurityFilter()
+        self.rls_entry1.tables.extend(
             session.query(SqlaTable)
             .filter(SqlaTable.table_name.in_(["energy_usage", "unicode_test"]))
             .all()
         )
-        self.rls_entry.clause = "value > 1"
-        self.rls_entry.roles.append(
-            security_manager.find_role("Gamma")
-        )  # db.session.query(Role).filter_by(name="Gamma").first())
-        self.rls_entry.roles.append(security_manager.find_role("Alpha"))
-        db.session.add(self.rls_entry)
+        self.rls_entry1.filter_type = "Regular"
+        self.rls_entry1.clause = "value > {{ cache_key_wrapper(1) }}"
+        self.rls_entry1.group_key = None
+        self.rls_entry1.roles.append(security_manager.find_role("Gamma"))
+        self.rls_entry1.roles.append(security_manager.find_role("Alpha"))
+        db.session.add(self.rls_entry1)
+
+        # Create regular RowLevelSecurityFilter (birth_names name starts with A or B)
+        self.rls_entry2 = RowLevelSecurityFilter()
+        self.rls_entry2.tables.extend(
+            session.query(SqlaTable)
+            .filter(SqlaTable.table_name.in_(["birth_names"]))
+            .all()
+        )
+        self.rls_entry2.filter_type = "Regular"
+        self.rls_entry2.clause = "name like 'A%' or name like 'B%'"
+        self.rls_entry2.group_key = "name"
+        self.rls_entry2.roles.append(security_manager.find_role("NameAB"))
+        db.session.add(self.rls_entry2)
+
+        # Create Regular RowLevelSecurityFilter (birth_names name starts with Q)
+        self.rls_entry3 = RowLevelSecurityFilter()
+        self.rls_entry3.tables.extend(
+            session.query(SqlaTable)
+            .filter(SqlaTable.table_name.in_(["birth_names"]))
+            .all()
+        )
+        self.rls_entry3.filter_type = "Regular"
+        self.rls_entry3.clause = "name like 'Q%'"
+        self.rls_entry3.group_key = "name"
+        self.rls_entry3.roles.append(security_manager.find_role("NameQ"))
+        db.session.add(self.rls_entry3)
+
+        # Create Base RowLevelSecurityFilter (birth_names boys)
+        self.rls_entry4 = RowLevelSecurityFilter()
+        self.rls_entry4.tables.extend(
+            session.query(SqlaTable)
+            .filter(SqlaTable.table_name.in_(["birth_names"]))
+            .all()
+        )
+        self.rls_entry4.filter_type = "Base"
+        self.rls_entry4.clause = "gender = 'boy'"
+        self.rls_entry4.group_key = "gender"
+        self.rls_entry4.roles.append(security_manager.find_role("Admin"))
+        db.session.add(self.rls_entry4)
 
         db.session.commit()
 
     def tearDown(self):
         session = db.session
-        session.delete(self.rls_entry)
+        session.delete(self.rls_entry1)
+        session.delete(self.rls_entry2)
+        session.delete(self.rls_entry3)
+        session.delete(self.rls_entry4)
+        session.delete(security_manager.find_role("NameAB"))
+        session.delete(security_manager.find_role("NameQ"))
+        session.delete(self.get_user("NoRlsRoleUser"))
         session.commit()
 
-    # Do another test to make sure it doesn't alter another query
-    def test_rls_filter_alters_query(self):
-        g.user = self.get_user(
-            username="alpha"
-        )  # self.login() doesn't actually set the user
+    def test_rls_filter_alters_energy_query(self):
+        g.user = self.get_user(username="alpha")
         tbl = self.get_table_by_name("energy_usage")
-        query_obj = dict(
-            groupby=[],
-            metrics=[],
-            filter=[],
-            is_timeseries=False,
-            columns=["value"],
-            granularity=None,
-            from_dttm=None,
-            to_dttm=None,
-            extras={},
-        )
-        sql = tbl.get_query_str(query_obj)
-        self.assertIn("value > 1", sql)
+        sql = tbl.get_query_str(self.query_obj)
+        assert tbl.get_extra_cache_keys(self.query_obj) == [1]
+        assert "value > 1" in sql
 
-    def test_rls_filter_doesnt_alter_query(self):
+    def test_rls_filter_doesnt_alter_energy_query(self):
         g.user = self.get_user(
             username="admin"
         )  # self.login() doesn't actually set the user
         tbl = self.get_table_by_name("energy_usage")
-        query_obj = dict(
-            groupby=[],
-            metrics=[],
-            filter=[],
-            is_timeseries=False,
-            columns=["value"],
-            granularity=None,
-            from_dttm=None,
-            to_dttm=None,
-            extras={},
-        )
-        sql = tbl.get_query_str(query_obj)
-        self.assertNotIn("value > 1", sql)
+        sql = tbl.get_query_str(self.query_obj)
+        assert tbl.get_extra_cache_keys(self.query_obj) == []
+        assert "value > 1" not in sql
 
+    @pytest.mark.usefixtures("load_unicode_dashboard_with_slice")
     def test_multiple_table_filter_alters_another_tables_query(self):
         g.user = self.get_user(
             username="alpha"
         )  # self.login() doesn't actually set the user
         tbl = self.get_table_by_name("unicode_test")
-        query_obj = dict(
-            groupby=[],
-            metrics=[],
-            filter=[],
-            is_timeseries=False,
-            columns=["value"],
-            granularity=None,
-            from_dttm=None,
-            to_dttm=None,
-            extras={},
+        sql = tbl.get_query_str(self.query_obj)
+        assert tbl.get_extra_cache_keys(self.query_obj) == [1]
+        assert "value > 1" in sql
+
+    def test_rls_filter_alters_gamma_birth_names_query(self):
+        g.user = self.get_user(username="gamma")
+        tbl = self.get_table_by_name("birth_names")
+        sql = tbl.get_query_str(self.query_obj)
+
+        # establish that the filters are grouped together correctly with
+        # ANDs, ORs and parens in the correct place
+        assert (
+            "WHERE ((name like 'A%'\n        or name like 'B%')\n       OR (name like 'Q%'))\n  AND (gender = 'boy');"
+            in sql
         )
-        sql = tbl.get_query_str(query_obj)
-        self.assertIn("value > 1", sql)
+
+    def test_rls_filter_alters_no_role_user_birth_names_query(self):
+        g.user = self.get_user(username="NoRlsRoleUser")
+        tbl = self.get_table_by_name("birth_names")
+        sql = tbl.get_query_str(self.query_obj)
+
+        # gamma's filters should not be present query
+        assert not self.NAMES_A_REGEX.search(sql)
+        assert not self.NAMES_B_REGEX.search(sql)
+        assert not self.NAMES_Q_REGEX.search(sql)
+        # base query should be present
+        assert self.BASE_FILTER_REGEX.search(sql)
+
+    def test_rls_filter_doesnt_alter_admin_birth_names_query(self):
+        g.user = self.get_user(username="admin")
+        tbl = self.get_table_by_name("birth_names")
+        sql = tbl.get_query_str(self.query_obj)
+
+        # no filters are applied for admin user
+        assert not self.NAMES_A_REGEX.search(sql)
+        assert not self.NAMES_B_REGEX.search(sql)
+        assert not self.NAMES_Q_REGEX.search(sql)
+        assert not self.BASE_FILTER_REGEX.search(sql)

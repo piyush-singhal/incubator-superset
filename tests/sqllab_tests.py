@@ -38,10 +38,7 @@ from superset.utils.core import (
 )
 
 from .base_tests import SupersetTestCase
-from .sqllab_test_util import (
-    setup_presto_if_needed,
-    CTAS_SCHEMA_NAME,
-)  # noqa autoused fixture
+from .conftest import CTAS_SCHEMA_NAME
 
 QUERY_1 = "SELECT * FROM birth_names LIMIT 1"
 QUERY_2 = "SELECT * FROM NO_TABLE"
@@ -384,6 +381,27 @@ class TestSqlLab(SupersetTestCase):
         table_id = resp["table_id"]
         table = db.session.query(SqlaTable).filter_by(id=table_id).one()
         self.assertEqual([owner.username for owner in table.owners], ["admin"])
+        view_menu = security_manager.find_view_menu(table.get_perm())
+        assert view_menu is not None
+
+    def test_sqllab_viz_bad_payload(self):
+        self.login("admin")
+        payload = {
+            "chartType": "dist_bar",
+            "schema": "superset",
+            "columns": [
+                {"is_date": False, "type": "STRING", "name": f"viz_type_{random()}"},
+                {"is_date": False, "type": "OBJECT", "name": f"ccount_{random()}"},
+            ],
+            "sql": """\
+                SELECT *
+                FROM birth_names
+                LIMIT 10""",
+        }
+        data = {"data": json.dumps(payload)}
+        url = "/superset/sqllab_viz/"
+        response = self.client.post(url, data=data, follow_redirects=True)
+        assert response.status_code == 400
 
     def test_sqllab_table_viz(self):
         self.login("admin")
@@ -518,6 +536,7 @@ class TestSqlLab(SupersetTestCase):
             "page_size": -1,
         }
         url = f"api/v1/database/?q={prison.dumps(arguments)}"
+
         self.assertEqual(
             {"examples", "fake_db_100", "main"},
             {r.get("database_name") for r in self.get_json_resp(url)["result"]},

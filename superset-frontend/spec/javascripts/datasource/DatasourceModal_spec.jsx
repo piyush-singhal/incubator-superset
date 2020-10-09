@@ -24,7 +24,7 @@ import { mount } from 'enzyme';
 import fetchMock from 'fetch-mock';
 import thunk from 'redux-thunk';
 import sinon from 'sinon';
-import { supersetTheme, ThemeProvider } from '@superset-ui/style';
+import { supersetTheme, ThemeProvider } from '@superset-ui/core';
 
 import waitForComponentToPaint from 'spec/helpers/waitForComponentToPaint';
 import DatasourceModal from 'src/datasource/DatasourceModal';
@@ -60,12 +60,10 @@ async function mountAndWait(props = mockedProps) {
 }
 
 describe('DatasourceModal', () => {
-  fetchMock.post(SAVE_ENDPOINT, SAVE_PAYLOAD);
-  const callsP = fetchMock.put(SAVE_ENDPOINT, SAVE_PAYLOAD);
-
   let wrapper;
 
   beforeEach(async () => {
+    fetchMock.reset();
     wrapper = await mountAndWait();
   });
 
@@ -82,8 +80,12 @@ describe('DatasourceModal', () => {
   });
 
   it('saves on confirm', async () => {
+    const callsP = fetchMock.post(SAVE_ENDPOINT, SAVE_PAYLOAD);
     act(() => {
-      wrapper.find('[className="m-r-5"]').props().onClick();
+      wrapper
+        .find('button[data-test="datasource-modal-save"]')
+        .props()
+        .onClick();
     });
     await waitForComponentToPaint(wrapper);
     act(() => {
@@ -91,6 +93,9 @@ describe('DatasourceModal', () => {
       okButton.simulate('click');
     });
     await waitForComponentToPaint(wrapper);
-    expect(callsP._calls).toHaveLength(2); /* eslint no-underscore-dangle: 0 */
+    const expected = ['http://localhost/datasource/save/'];
+    expect(callsP._calls.map(call => call[0])).toEqual(
+      expected,
+    ); /* eslint no-underscore-dangle: 0 */
   });
 });

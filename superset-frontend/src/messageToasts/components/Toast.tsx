@@ -17,7 +17,7 @@
  * under the License.
  */
 import { Alert } from 'react-bootstrap';
-import styled from '@superset-ui/style';
+import { styled } from '@superset-ui/core';
 import cx from 'classnames';
 import Interweave from 'interweave';
 import React, { useEffect, useState } from 'react';
@@ -87,7 +87,7 @@ export default function Toast({ toast, onCloseToast }: ToastPresenterProps) {
           <Icon name="circle-check-solid" />
         )}
         {toast.toastType === WARNING_TOAST ||
-          (toast.toastType === DANGER_TOAST && <Icon name="error" />)}
+          (toast.toastType === DANGER_TOAST && <Icon name="error-solid" />)}
         <Interweave content={toast.text} />
       </ToastContianer>
     </Alert>

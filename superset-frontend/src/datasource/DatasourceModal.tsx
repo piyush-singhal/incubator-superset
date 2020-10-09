@@ -17,15 +17,37 @@
  * under the License.
  */
 import React, { FunctionComponent, useState, useRef } from 'react';
-import { Alert, Button, Modal } from 'react-bootstrap';
-// @ts-ignore
+import { Alert, Modal } from 'react-bootstrap';
+import Button from 'src/components/Button';
 import Dialog from 'react-bootstrap-dialog';
-import { t } from '@superset-ui/translation';
-import { SupersetClient } from '@superset-ui/connection';
+import { styled, t, SupersetClient } from '@superset-ui/core';
+import AsyncEsmComponent from 'src/components/AsyncEsmComponent';
 
-import getClientErrorObject from '../utils/getClientErrorObject';
-import DatasourceEditor from './DatasourceEditor';
-import withToasts from '../messageToasts/enhancers/withToasts';
+import getClientErrorObject from 'src/utils/getClientErrorObject';
+import withToasts from 'src/messageToasts/enhancers/withToasts';
+
+const DatasourceEditor = AsyncEsmComponent(() => import('./DatasourceEditor'));
+
+const StyledDatasourceModal = styled(Modal)`
+  .modal-content {
+    height: 900px;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .modal-header {
+    flex: 0 1 auto;
+  }
+  .modal-body {
+    flex: 1 1 auto;
+    overflow: auto;
+  }
+
+  .modal-footer {
+    flex: 0 1 auto;
+  }
+`;
 
 interface DatasourceModalProps {
   addSuccessToast: (msg: string) => void;
@@ -34,6 +56,18 @@ interface DatasourceModalProps {
   onDatasourceSave: (datasource: object, errors?: Array<any>) => {};
   onHide: () => {};
   show: boolean;
+}
+
+function buildMetricExtraJsonObject(metric: Record<string, unknown>) {
+  if (metric?.certified_by || metric?.certification_details) {
+    return JSON.stringify({
+      certification: {
+        certified_by: metric?.certified_by ?? null,
+        details: metric?.certification_details ?? null,
+      },
+    });
+  }
+  return null;
 }
 
 const DatasourceModal: FunctionComponent<DatasourceModalProps> = ({
@@ -48,17 +82,25 @@ const DatasourceModal: FunctionComponent<DatasourceModalProps> = ({
   const dialog = useRef<any>(null);
 
   const onConfirmSave = () => {
+    // Pull out extra fields into the extra object
+
     SupersetClient.post({
       endpoint: '/datasource/save/',
       postPayload: {
         data: {
           ...currentDatasource,
+          metrics: currentDatasource?.metrics?.map(
+            (metric: Record<string, unknown>) => ({
+              ...metric,
+              extra: buildMetricExtraJsonObject(metric),
+            }),
+          ),
           type: currentDatasource.type || currentDatasource.datasource_type,
         },
       },
     })
       .then(({ json }) => {
-        addSuccessToast(t('The datasource has been saved'));
+        addSuccessToast(t('The dataset has been saved'));
         onDatasourceSave(json);
         onHide();
       })
@@ -75,8 +117,14 @@ const DatasourceModal: FunctionComponent<DatasourceModalProps> = ({
       );
   };
 
-  const onDatasourceChange = (data: object, err: Array<any>) => {
-    setCurrentDatasource(data);
+  const onDatasourceChange = (data: Record<string, any>, err: Array<any>) => {
+    setCurrentDatasource({
+      ...data,
+      metrics: data?.metrics.map((metric: Record<string, unknown>) => ({
+        ...metric,
+        is_certified: metric?.certified_by || metric?.certification_details,
+      })),
+    });
     setErrors(err);
   };
 
@@ -89,8 +137,8 @@ const DatasourceModal: FunctionComponent<DatasourceModalProps> = ({
       >
         <div>
           <i className="fa fa-exclamation-triangle" />{' '}
-          {t(`The data source configuration exposed here
-                affects all the charts using this datasource.
+          {t(`The dataset configuration exposed here
+                affects all the charts using this dataset.
                 Be mindful that changing settings
                 here may affect other charts
                 in undesirable ways.`)}
@@ -110,12 +158,12 @@ const DatasourceModal: FunctionComponent<DatasourceModalProps> = ({
   };
 
   return (
-    <Modal show={show} onHide={onHide} bsSize="lg">
+    <StyledDatasourceModal show={show} onHide={onHide} bsSize="large">
       <Modal.Header closeButton>
         <Modal.Title>
           <div>
             <span className="float-left">
-              {t('Datasource Editor for ')}
+              {t('Edit Dataset ')}
               <strong>{currentDatasource.table_name}</strong>
             </span>
           </div>
@@ -124,6 +172,8 @@ const DatasourceModal: FunctionComponent<DatasourceModalProps> = ({
       <Modal.Body>
         {show && (
           <DatasourceEditor
+            showLoadingForImport
+            height={500}
             datasource={currentDatasource}
             onChange={onDatasourceChange}
           />
@@ -132,8 +182,8 @@ const DatasourceModal: FunctionComponent<DatasourceModalProps> = ({
       <Modal.Footer>
         <span className="float-left">
           <Button
-            bsSize="sm"
-            bsStyle="default"
+            buttonSize="sm"
+            buttonStyle="default"
             target="_blank"
             href={currentDatasource.edit_url || currentDatasource.url}
           >
@@ -143,21 +193,22 @@ const DatasourceModal: FunctionComponent<DatasourceModalProps> = ({
 
         <span className="float-right">
           <Button
-            bsSize="sm"
-            bsStyle="primary"
+            buttonSize="sm"
+            buttonStyle="primary"
             className="m-r-5"
+            data-test="datasource-modal-save"
             onClick={onClickSave}
             disabled={errors.length > 0}
           >
             {t('Save')}
           </Button>
-          <Button bsSize="sm" onClick={onHide}>
+          <Button buttonSize="sm" onClick={onHide}>
             {t('Cancel')}
           </Button>
           <Dialog ref={dialog} />
         </span>
       </Modal.Footer>
-    </Modal>
+    </StyledDatasourceModal>
   );
 };
 

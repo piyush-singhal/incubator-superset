@@ -18,7 +18,7 @@
  */
 import React from 'react';
 import { Badge } from 'react-bootstrap';
-import { t } from '@superset-ui/translation';
+import { t } from '@superset-ui/core';
 
 import Label from 'src/components/Label';
 import { UserWithPermissionsAndRoles } from '../../types/bootstrapTypes';
@@ -57,7 +57,7 @@ export default function Security({ user }: SecurityProps) {
         {user.permissions.datasource_access && (
           <div>
             <h4>
-              {t('Datasources')}{' '}
+              {t('Datasets')}{' '}
               <Badge>{user.permissions.datasource_access.length}</Badge>
             </h4>
             {user.permissions.datasource_access.map(role => (
