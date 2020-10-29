@@ -70,11 +70,6 @@ const StyledInputContainer = styled.div`
     i {
       margin: 0 ${({ theme }) => theme.gridUnit}px;
     }
-
-    .btn-primary {
-      height: 36px;
-      font-size: ${({ theme }) => theme.typography.sizes.s - 1}px;
-    }
   }
 
   input,
@@ -125,6 +120,9 @@ const DatabaseModal: FunctionComponent<DatabaseModalProps> = ({
   const [isHidden, setIsHidden] = useState<boolean>(true);
 
   const isEditMode = database !== null;
+  const defaultExtra =
+    '{\n  "metadata_params": {},\n  "engine_params": {},' +
+    '\n  "metadata_cache_timeout": {},\n  "schemas_allowed_for_csv_upload": [] \n}';
 
   // Database fetch logic
   const {
@@ -588,11 +586,7 @@ const DatabaseModal: FunctionComponent<DatabaseModalProps> = ({
             <div className="input-container">
               <textarea
                 name="extra"
-                value={db ? db.extra || '' : ''}
-                placeholder={
-                  '{\n  "metadata_params": {},\n  "engine_params": {},' +
-                  '\n  "metadata_cache_timeout": {},\n  "schemas_allowed_for_csv_upload": [] \n}'
-                }
+                value={(db && db.extra) ?? defaultExtra}
                 onChange={onTextChange}
               />
             </div>

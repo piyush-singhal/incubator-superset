@@ -15,20 +15,27 @@
 # specific language governing permissions and limitations
 # under the License.
 import logging
+from datetime import datetime
+from io import BytesIO
 from typing import Any
+from zipfile import ZipFile
 
 import yaml
-from flask import g, request, Response
+from flask import g, request, Response, send_file
 from flask_appbuilder.api import expose, protect, rison, safe
 from flask_appbuilder.models.sqla.interface import SQLAInterface
+from flask_babel import ngettext
 from marshmallow import ValidationError
 
+from superset import is_feature_enabled
 from superset.connectors.sqla.models import SqlaTable
 from superset.constants import RouteMethod
 from superset.databases.filters import DatabaseFilter
+from superset.datasets.commands.bulk_delete import BulkDeleteDatasetCommand
 from superset.datasets.commands.create import CreateDatasetCommand
 from superset.datasets.commands.delete import DeleteDatasetCommand
 from superset.datasets.commands.exceptions import (
+    DatasetBulkDeleteFailedError,
     DatasetCreateFailedError,
     DatasetDeleteFailedError,
     DatasetForbiddenError,
@@ -37,6 +44,7 @@ from superset.datasets.commands.exceptions import (
     DatasetRefreshFailedError,
     DatasetUpdateFailedError,
 )
+from superset.datasets.commands.export import ExportDatasetsCommand
 from superset.datasets.commands.refresh import RefreshDatasetCommand
 from superset.datasets.commands.update import UpdateDatasetCommand
 from superset.datasets.dao import DatasetDAO
@@ -44,6 +52,7 @@ from superset.datasets.schemas import (
     DatasetPostSchema,
     DatasetPutSchema,
     DatasetRelatedObjectsResponse,
+    get_delete_ids_schema,
     get_export_ids_schema,
 )
 from superset.views.base import DatasourceFilter, generate_download_headers
@@ -68,6 +77,7 @@ class DatasetRestApi(BaseSupersetModelRestApi):
         RouteMethod.EXPORT,
         RouteMethod.RELATED,
         RouteMethod.DISTINCT,
+        "bulk_delete",
         "refresh",
         "related_objects",
     }
@@ -337,7 +347,7 @@ class DatasetRestApi(BaseSupersetModelRestApi):
     @statsd_metrics
     @rison(get_export_ids_schema)
     def export(self, **kwargs: Any) -> Response:
-        """Export dashboards
+        """Export datasets
         ---
         get:
           description: >-
@@ -368,6 +378,31 @@ class DatasetRestApi(BaseSupersetModelRestApi):
               $ref: '#/components/responses/500'
         """
         requested_ids = kwargs["rison"]
+
+        if is_feature_enabled("VERSIONED_EXPORT"):
+            timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+            root = f"dataset_export_{timestamp}"
+            filename = f"{root}.zip"
+
+            buf = BytesIO()
+            with ZipFile(buf, "w") as bundle:
+                try:
+                    for file_name, file_content in ExportDatasetsCommand(
+                        requested_ids
+                    ).run():
+                        with bundle.open(f"{root}/{file_name}", "w") as fp:
+                            fp.write(file_content.encode())
+                except DatasetNotFoundError:
+                    return self.response_404()
+            buf.seek(0)
+
+            return send_file(
+                buf,
+                mimetype="application/zip",
+                as_attachment=True,
+                attachment_filename=filename,
+            )
+
         query = self.datamodel.session.query(SqlaTable).filter(
             SqlaTable.id.in_(requested_ids)
         )
@@ -489,3 +524,62 @@ class DatasetRestApi(BaseSupersetModelRestApi):
             charts={"count": len(charts), "result": charts},
             dashboards={"count": len(dashboards), "result": dashboards},
         )
+
+    @expose("/", methods=["DELETE"])
+    @protect()
+    @safe
+    @statsd_metrics
+    @rison(get_delete_ids_schema)
+    def bulk_delete(self, **kwargs: Any) -> Response:
+        """Delete bulk Datasets
+        ---
+        delete:
+          description: >-
+            Deletes multiple Datasets in a bulk operation.
+          parameters:
+          - in: query
+            name: q
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/get_delete_ids_schema'
+          responses:
+            200:
+              description: Dataset bulk delete
+              content:
+                application/json:
+                  schema:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+            400:
+              $ref: '#/components/responses/400'
+            401:
+              $ref: '#/components/responses/401'
+            403:
+              $ref: '#/components/responses/403'
+            404:
+              $ref: '#/components/responses/404'
+            422:
+              $ref: '#/components/responses/422'
+            500:
+              $ref: '#/components/responses/500'
+        """
+        item_ids = kwargs["rison"]
+        try:
+            BulkDeleteDatasetCommand(g.user, item_ids).run()
+            return self.response(
+                200,
+                message=ngettext(
+                    "Deleted %(num)d dataset",
+                    "Deleted %(num)d datasets",
+                    num=len(item_ids),
+                ),
+            )
+        except DatasetNotFoundError:
+            return self.response_404()
+        except DatasetForbiddenError:
+            return self.response_403()
+        except DatasetBulkDeleteFailedError as ex:
+            return self.response_422(message=str(ex))

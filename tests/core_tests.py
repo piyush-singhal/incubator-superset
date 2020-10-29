@@ -199,11 +199,16 @@ class TestCore(SupersetTestCase):
         self.assertIn("id", resp_annotations["result"][0])
         self.assertIn("name", resp_annotations["result"][0])
 
-        layer = self.get_resp(
+        response = self.get_resp(
             f"/superset/annotation_json/{layer.id}?form_data="
             + quote(json.dumps({"time_range": "100 years ago : now"}))
         )
-        self.assertIn("my_annotation", layer)
+        assert "my_annotation" in response
+
+        # Rollback changes
+        db.session.delete(annotation)
+        db.session.delete(layer)
+        db.session.commit()
 
     def test_admin_only_permissions(self):
         def assert_admin_permission_in(role_name, assert_func):
@@ -588,10 +593,10 @@ class TestCore(SupersetTestCase):
         ) == [{"slice_id": slc.id, "viz_error": None, "viz_status": "success"}]
 
     def test_cache_logging(self):
-        slc = self.get_slice("Girls", db.session)
-        self.get_json_resp("/superset/warm_up_cache?slice_id={}".format(slc.id))
+        girls_slice = self.get_slice("Girls", db.session)
+        self.get_json_resp("/superset/warm_up_cache?slice_id={}".format(girls_slice.id))
         ck = db.session.query(CacheKey).order_by(CacheKey.id.desc()).first()
-        assert ck.datasource_uid == "3__table"
+        assert ck.datasource_uid == f"{girls_slice.table.id}__table"
 
     def test_shortner(self):
         self.login(username="admin")

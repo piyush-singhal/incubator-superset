@@ -137,6 +137,7 @@ class BaseEngineSpec:  # pylint: disable=too-many-public-methods
     """Abstract class for database engine specific configurations"""
 
     engine = "base"  # str as defined in sqlalchemy.engine.engine
+    engine_aliases: Optional[Tuple[str]] = None
     engine_name: Optional[
         str
     ] = None  # used for user messages, overridden in child classes
@@ -374,6 +375,18 @@ class BaseEngineSpec:  # pylint: disable=too-many-public-methods
         if isinstance(type_code, str) and type_code != "":
             return type_code.upper()
         return None
+
+    @classmethod
+    def normalize_indexes(cls, indexes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Normalizes indexes for more consistency across db engines
+
+        noop by default
+
+        :param indexes: Raw indexes as returned by SQLAlchemy
+        :return: cleaner, more aligned index definition
+        """
+        return indexes
 
     @classmethod
     def extra_table_metadata(

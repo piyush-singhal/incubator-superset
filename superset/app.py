@@ -125,6 +125,8 @@ class SupersetAppInitializer:
         #
         # pylint: disable=too-many-locals
         # pylint: disable=too-many-statements
+        from superset.annotation_layers.api import AnnotationLayerRestApi
+        from superset.annotation_layers.annotations.api import AnnotationRestApi
         from superset.cachekeys.api import CacheRestApi
         from superset.charts.api import ChartRestApi
         from superset.connectors.druid.views import (
@@ -151,8 +153,6 @@ class SupersetAppInitializer:
             AlertLogModelView,
             AlertModelView,
             AlertObservationModelView,
-            SQLObserverInlineView,
-            ValidatorInlineView,
         )
         from superset.views.annotations import (
             AnnotationLayerModelView,
@@ -196,6 +196,8 @@ class SupersetAppInitializer:
         #
         # Setup API views
         #
+        appbuilder.add_api(AnnotationRestApi)
+        appbuilder.add_api(AnnotationLayerRestApi)
         appbuilder.add_api(CacheRestApi)
         appbuilder.add_api(ChartRestApi)
         appbuilder.add_api(CssTemplateRestApi)
@@ -411,8 +413,6 @@ class SupersetAppInitializer:
                 category_label=__("Manage"),
                 icon="fa-exclamation-triangle",
             )
-            appbuilder.add_view_no_menu(SQLObserverInlineView)
-            appbuilder.add_view_no_menu(ValidatorInlineView)
             appbuilder.add_view_no_menu(AlertObservationModelView)
             appbuilder.add_view_no_menu(AlertLogModelView)
 

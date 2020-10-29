@@ -42,6 +42,7 @@ from superset.jinja_context import (  # pylint: disable=unused-import
 )
 from superset.stats_logger import DummyStatsLogger
 from superset.typing import CacheConfig
+from superset.utils.core import is_test
 from superset.utils.log import DBEventLogger
 from superset.utils.logging_configurator import DefaultLoggingConfigurator
 
@@ -284,6 +285,9 @@ LANGUAGES = {
     "ru": {"flag": "ru", "name": "Russian"},
     "ko": {"flag": "kr", "name": "Korean"},
 }
+# Turning off i18n by default as translation in most languages are
+# incomplete and not well maintained.
+LANGUAGES = {}
 
 # ---------------------------------------------------
 # Feature flags
@@ -302,13 +306,19 @@ DEFAULT_FEATURE_FLAGS: Dict[str, bool] = {
     "PRESTO_EXPAND_DATA": False,
     # Exposes API endpoint to compute thumbnails
     "THUMBNAILS": False,
-    "REDUCE_DASHBOARD_BOOTSTRAP_PAYLOAD": True,
+    "DASHBOARD_CACHE": False,
     "REMOVE_SLICE_LEVEL_LABEL_COLORS": False,
     "SHARE_QUERIES_VIA_KV_STORE": False,
     "SIP_38_VIZ_REARCHITECTURE": False,
     "TAGGING_SYSTEM": False,
     "SQLLAB_BACKEND_PERSISTENCE": False,
     "LISTVIEWS_DEFAULT_CARD_VIEW": False,
+    "ENABLE_REACT_CRUD_VIEWS": True,
+    # When True, this flag allows display of HTML tags in Markdown components
+    "DISPLAY_MARKDOWN_HTML": True,
+    # When True, this escapes HTML (rather than rendering it) in Markdown components
+    "ESCAPE_MARKDOWN_HTML": False,
+    "SIP_34_ANNOTATIONS_UI": False,
 }
 
 # Set the default view to card/grid view if thumbnail support is enabled.
@@ -369,6 +379,7 @@ IMG_UPLOAD_URL = "/static/uploads/"
 CACHE_DEFAULT_TIMEOUT = 60 * 60 * 24
 CACHE_CONFIG: CacheConfig = {"CACHE_TYPE": "null"}
 TABLE_NAMES_CACHE_CONFIG: CacheConfig = {"CACHE_TYPE": "null"}
+DASHBOARD_CACHE_TIMEOUT = 60 * 60 * 24 * 365
 
 # CORS Options
 ENABLE_CORS = False
@@ -628,11 +639,11 @@ UPLOADED_CSV_HIVE_NAMESPACE: Optional[str] = None
 # db configuration and a result of this function.
 
 # mypy doesn't catch that if case ensures list content being always str
-ALLOWED_USER_CSV_SCHEMA_FUNC: Callable[
-    ["Database", "models.User"], List[str]
-] = lambda database, user: [
-    UPLOADED_CSV_HIVE_NAMESPACE
-] if UPLOADED_CSV_HIVE_NAMESPACE else []
+ALLOWED_USER_CSV_SCHEMA_FUNC: Callable[["Database", "models.User"], List[str]] = (
+    lambda database, user: [UPLOADED_CSV_HIVE_NAMESPACE]
+    if UPLOADED_CSV_HIVE_NAMESPACE
+    else []
+)
 
 # Values that should be treated as nulls for the csv uploads.
 CSV_DEFAULT_NA_NAMES = list(STR_NA_VALUES)
@@ -841,7 +852,7 @@ DOCUMENTATION_ICON = None  # Recommended size: 16x16
 # Enables the replacement react views for all the FAB views (list, edit, show) with
 # designs introduced in SIP-34: https://github.com/apache/incubator-superset/issues/8976
 # This is a work in progress so not all features available in FAB have been implemented
-ENABLE_REACT_CRUD_VIEWS = False
+ENABLE_REACT_CRUD_VIEWS = DEFAULT_FEATURE_FLAGS["ENABLE_REACT_CRUD_VIEWS"]
 
 # What is the Last N days relative in the time selector to:
 # 'today' means it is midnight (00:00:00) in the local timezone
@@ -951,10 +962,10 @@ if CONFIG_PATH_ENV_VAR in os.environ:
             "Failed to import config for %s=%s", CONFIG_PATH_ENV_VAR, cfg_path
         )
         raise
-elif importlib.util.find_spec("superset_config"):
+elif importlib.util.find_spec("superset_config") and not is_test():
     try:
         import superset_config  # pylint: disable=import-error
-        from superset_config import *  # type: ignore  # pylint: disable=import-error,wildcard-import,unused-wildcard-import
+        from superset_config import *  # type: ignore # pylint: disable=import-error,wildcard-import,unused-wildcard-import
 
         print(f"Loaded your LOCAL configuration at [{superset_config.__file__}]")
     except Exception:

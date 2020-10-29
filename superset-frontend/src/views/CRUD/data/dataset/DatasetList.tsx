@@ -17,7 +17,12 @@
  * under the License.
  */
 import { SupersetClient, t } from '@superset-ui/core';
-import React, { FunctionComponent, useState, useMemo } from 'react';
+import React, {
+  FunctionComponent,
+  useState,
+  useMemo,
+  useCallback,
+} from 'react';
 import rison from 'rison';
 import {
   createFetchRelated,
@@ -34,11 +39,11 @@ import SubMenu, {
   ButtonProps,
 } from 'src/components/Menu/SubMenu';
 import { commonMenuData } from 'src/views/CRUD/data/common';
-import AvatarIcon from 'src/components/AvatarIcon';
 import Owner from 'src/types/Owner';
 import withToasts from 'src/messageToasts/enhancers/withToasts';
 import TooltipWrapper from 'src/components/TooltipWrapper';
 import Icon from 'src/components/Icon';
+import FacePile from 'src/components/FacePile';
 import AddDatasetModal from './AddDatasetModal';
 
 const PAGE_SIZE = 25;
@@ -101,20 +106,23 @@ const DatasetList: FunctionComponent<DatasetListProps> = ({
 
   const initialSort = [{ id: 'changed_on_delta_humanized', desc: true }];
 
-  const openDatasetEditModal = ({ id }: Dataset) => {
-    SupersetClient.get({
-      endpoint: `/api/v1/dataset/${id}`,
-    })
-      .then(({ json = {} }) => {
-        const owners = json.result.owners.map((owner: any) => owner.id);
-        setDatasetCurrentlyEditing({ ...json.result, owners });
+  const openDatasetEditModal = useCallback(
+    ({ id }: Dataset) => {
+      SupersetClient.get({
+        endpoint: `/api/v1/dataset/${id}`,
       })
-      .catch(() => {
-        addDangerToast(
-          t('An error occurred while fetching dataset related data'),
-        );
-      });
-  };
+        .then(({ json = {} }) => {
+          const owners = json.result.owners.map((owner: any) => owner.id);
+          setDatasetCurrentlyEditing({ ...json.result, owners });
+        })
+        .catch(() => {
+          addDangerToast(
+            t('An error occurred while fetching dataset related data'),
+          );
+        });
+    },
+    [addDangerToast],
+  );
 
   const openDatasetDeleteModal = (dataset: Dataset) =>
     SupersetClient.get({
@@ -170,9 +178,9 @@ const DatasetList: FunctionComponent<DatasetListProps> = ({
       {
         Cell: ({
           row: {
-            original: { table_name: datasetTitle },
+            original: { table_name: datasetTitle, explore_url: exploreURL },
           },
-        }: any) => datasetTitle,
+        }: any) => <a href={exploreURL}>{datasetTitle}</a>,
         Header: t('Name'),
         accessor: 'table_name',
       },
@@ -225,25 +233,9 @@ const DatasetList: FunctionComponent<DatasetListProps> = ({
       {
         Cell: ({
           row: {
-            original: { owners, table_name: tableName },
+            original: { owners = [], table_name: tableName },
           },
-        }: any) => {
-          if (!owners) {
-            return null;
-          }
-          return owners
-            .slice(0, 5)
-            .map((owner: Owner) => (
-              <AvatarIcon
-                key={owner.id}
-                uniqueKey={`${tableName}-${owner.username}`}
-                firstName={owner.first_name}
-                lastName={owner.last_name}
-                iconSize={24}
-                textSize={9}
-              />
-            ));
-        },
+        }: any) => <FacePile users={owners} />,
         Header: t('Owners'),
         id: 'owners',
         disableSortBy: true,
@@ -258,25 +250,9 @@ const DatasetList: FunctionComponent<DatasetListProps> = ({
         Cell: ({ row: { original } }: any) => {
           const handleEdit = () => openDatasetEditModal(original);
           const handleDelete = () => openDatasetDeleteModal(original);
-          if (!canEdit && !canDelete) {
-            return null;
-          }
+
           return (
             <span className="actions">
-              <TooltipWrapper
-                label="explore-action"
-                tooltip={t('Explore')}
-                placement="bottom"
-              >
-                <a
-                  role="button"
-                  tabIndex={0}
-                  className="action-button"
-                  href={original.explore_url}
-                >
-                  <Icon name="nav-explore" />
-                </a>
-              </TooltipWrapper>
               {canDelete && (
                 <TooltipWrapper
                   label="delete-action"
@@ -315,10 +291,11 @@ const DatasetList: FunctionComponent<DatasetListProps> = ({
         },
         Header: t('Actions'),
         id: 'actions',
+        hidden: !canEdit && !canDelete,
         disableSortBy: true,
       },
     ],
-    [canCreate, canEdit, canDelete],
+    [canEdit, canDelete, openDatasetEditModal],
   );
 
   const filterTypes: Filters = useMemo(
@@ -411,7 +388,6 @@ const DatasetList: FunctionComponent<DatasetListProps> = ({
     buttonArr.push({
       name: (
         <>
-          {' '}
           <i className="fa fa-plus" /> {t('Dataset')}{' '}
         </>
       ),

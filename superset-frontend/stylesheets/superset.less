@@ -22,6 +22,14 @@
 
 @datasource-sql-expression-width: 315px;
 
+span,
+div,
+i {
+  &:focus {
+    outline: none;
+  }
+}
+
 .alert.alert-danger > .debugger {
   color: @danger;
 }
@@ -76,6 +84,8 @@ input.form-control {
 
 .container-fluid {
   text-align: left;
+  padding-left: 16px;
+  padding-right: 16px;
 }
 
 input[type='checkbox'] {
@@ -189,10 +199,6 @@ img.viz-thumb-option {
 
 table.table-no-hover tr:hover {
   background-color: initial;
-}
-
-.editable-title {
-  margin-right: 8px;
 }
 
 .editable-title input {

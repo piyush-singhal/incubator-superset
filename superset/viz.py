@@ -173,6 +173,9 @@ class BaseViz:
 
         self.process_metrics()
 
+        self.applied_filters: List[Dict[str, str]] = []
+        self.rejected_filters: List[Dict[str, str]] = []
+
     def process_metrics(self) -> None:
         # metrics in TableViz is order sensitive, so metric_dict should be
         # OrderedDict
@@ -468,14 +471,33 @@ class BaseViz:
 
     def get_payload(self, query_obj: Optional[QueryObjectDict] = None) -> VizPayload:
         """Returns a payload of metadata and data"""
+
         self.run_extra_queries()
         payload = self.get_df_payload(query_obj)
 
         df = payload.get("df")
+
         if self.status != utils.QueryStatus.FAILED:
             payload["data"] = self.get_data(df)
         if "df" in payload:
             del payload["df"]
+
+        filters = self.form_data.get("filters", [])
+        filter_columns = [flt.get("col") for flt in filters]
+        columns = set(self.datasource.column_names)
+        applied_time_extras = self.form_data.get("applied_time_extras", {})
+        applied_time_columns, rejected_time_columns = utils.get_time_filter_status(
+            self.datasource, applied_time_extras
+        )
+        payload["applied_filters"] = [
+            {"column": col} for col in filter_columns if col in columns
+        ] + applied_time_columns
+        payload["rejected_filters"] = [
+            {"reason": "not_in_datasource", "column": col}
+            for col in filter_columns
+            if col not in columns
+        ] + rejected_time_columns
+
         return payload
 
     def get_df_payload(
@@ -724,6 +746,10 @@ class TableViz(BaseViz):
                 if sort_by_label not in d["metrics"]:
                     d["metrics"].append(sort_by)
                 d["orderby"] = [(sort_by, not fd.get("order_desc", True))]
+            elif d["metrics"]:
+                # Legacy behavior of sorting by first metric by default
+                first_metric = d["metrics"][0]
+                d["orderby"] = [(first_metric, not fd.get("order_desc", True))]
         return d
 
     def get_data(self, df: pd.DataFrame) -> VizData:
@@ -1401,8 +1427,8 @@ class NVD3TimeSeriesViz(NVD3Viz):
             if not query_object["from_dttm"] or not query_object["to_dttm"]:
                 raise QueryObjectValidationError(
                     _(
-                        "`Since` and `Until` time bounds should be specified "
-                        "when using the `Time Shift` feature."
+                        "An enclosed time range (both start and end) must be specified "
+                        "when using a Time Comparison."
                     )
                 )
             query_object["from_dttm"] -= delta
