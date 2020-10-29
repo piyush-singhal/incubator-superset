@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Modal,
   Row,
@@ -31,17 +31,9 @@ import { OptionsType } from 'react-select/src/types';
 import { AsyncSelect } from 'src/components/Select';
 import rison from 'rison';
 import { t, SupersetClient } from '@superset-ui/core';
-import Chart from 'src/types/Chart';
+import Chart, { Slice } from 'src/types/Chart';
 import FormLabel from 'src/components/FormLabel';
 import getClientErrorObject from '../../utils/getClientErrorObject';
-
-export type Slice = {
-  id?: number;
-  slice_id: number;
-  slice_name: string;
-  description: string | null;
-  cache_timeout: number | null;
-};
 
 type InternalProps = {
   slice: Slice;
@@ -71,38 +63,45 @@ function PropertiesModal({ slice, onHide, onSave }: InternalProps) {
   );
   const [owners, setOwners] = useState<OptionsType<OwnerOption> | null>(null);
 
-  function showError({ error, statusText }: any) {
+  function showError({ error, statusText, message }: any) {
+    let errorText = error || statusText || t('An error has occurred');
+    if (message === 'Forbidden') {
+      errorText = t('You do not have permission to edit this chart');
+    }
     errorDialog.current.show({
       title: 'Error',
       bsSize: 'medium',
       bsStyle: 'danger',
       actions: [Dialog.DefaultAction('Ok', () => {}, 'btn-danger')],
-      body: error || statusText || t('An error has occurred'),
+      body: errorText,
     });
   }
 
-  async function fetchChartData() {
-    try {
-      const response = await SupersetClient.get({
-        endpoint: `/api/v1/chart/${slice.slice_id}`,
-      });
-      const chart = response.json.result;
-      setOwners(
-        chart.owners.map((owner: any) => ({
-          value: owner.id,
-          label: `${owner.first_name} ${owner.last_name}`,
-        })),
-      );
-    } catch (response) {
-      const clientError = await getClientErrorObject(response);
-      showError(clientError);
-    }
-  }
+  const fetchChartData = useCallback(
+    async function fetchChartData() {
+      try {
+        const response = await SupersetClient.get({
+          endpoint: `/api/v1/chart/${slice.slice_id}`,
+        });
+        const chart = response.json.result;
+        setOwners(
+          chart.owners.map((owner: any) => ({
+            value: owner.id,
+            label: `${owner.first_name} ${owner.last_name}`,
+          })),
+        );
+      } catch (response) {
+        const clientError = await getClientErrorObject(response);
+        showError(clientError);
+      }
+    },
+    [slice.slice_id],
+  );
 
   // get the owners of this slice
   useEffect(() => {
     fetchChartData();
-  }, []);
+  }, [fetchChartData]);
 
   const loadOptions = (input = '') => {
     const query = rison.encode({
@@ -159,7 +158,7 @@ function PropertiesModal({ slice, onHide, onSave }: InternalProps) {
 
   return (
     <form onSubmit={onSubmit}>
-      <Modal.Header closeButton>
+      <Modal.Header data-test="properties-edit-modal" closeButton>
         <Modal.Title>Edit Chart Properties</Modal.Title>
       </Modal.Header>
       <Modal.Body>
@@ -172,6 +171,7 @@ function PropertiesModal({ slice, onHide, onSave }: InternalProps) {
               </FormLabel>
               <FormControl
                 name="name"
+                data-test="properties-modal-name-input"
                 type="text"
                 bsSize="sm"
                 value={name}
@@ -249,10 +249,17 @@ function PropertiesModal({ slice, onHide, onSave }: InternalProps) {
         </Row>
       </Modal.Body>
       <Modal.Footer>
-        <Button type="button" buttonSize="sm" onClick={onHide} cta>
+        <Button
+          data-test="properties-modal-cancel-button"
+          type="button"
+          buttonSize="sm"
+          onClick={onHide}
+          cta
+        >
           {t('Cancel')}
         </Button>
         <Button
+          data-test="properties-modal-save-button"
           type="submit"
           buttonSize="sm"
           buttonStyle="primary"

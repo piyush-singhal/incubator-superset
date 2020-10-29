@@ -17,11 +17,14 @@
  * under the License.
  */
 import React, { FunctionComponent, useState, useRef } from 'react';
-import { Alert, Modal } from 'react-bootstrap';
+import { Alert } from 'react-bootstrap';
 import Button from 'src/components/Button';
 import Dialog from 'react-bootstrap-dialog';
 import { styled, t, SupersetClient } from '@superset-ui/core';
+
+import Modal from 'src/common/components/Modal';
 import AsyncEsmComponent from 'src/components/AsyncEsmComponent';
+import { isFeatureEnabled, FeatureFlag } from 'src/featureFlags';
 
 import getClientErrorObject from 'src/utils/getClientErrorObject';
 import withToasts from 'src/messageToasts/enhancers/withToasts';
@@ -83,12 +86,16 @@ const DatasourceModal: FunctionComponent<DatasourceModalProps> = ({
 
   const onConfirmSave = () => {
     // Pull out extra fields into the extra object
-
+    const schema =
+      currentDatasource.schema ||
+      currentDatasource.databaseSelector?.schema ||
+      currentDatasource.tableSelector?.schema;
     SupersetClient.post({
       endpoint: '/datasource/save/',
       postPayload: {
         data: {
           ...currentDatasource,
+          schema,
           metrics: currentDatasource?.metrics?.map(
             (metric: Record<string, unknown>) => ({
               ...metric,
@@ -158,40 +165,31 @@ const DatasourceModal: FunctionComponent<DatasourceModalProps> = ({
   };
 
   return (
-    <StyledDatasourceModal show={show} onHide={onHide} bsSize="large">
-      <Modal.Header closeButton>
-        <Modal.Title>
-          <div>
-            <span className="float-left">
-              {t('Edit Dataset ')}
-              <strong>{currentDatasource.table_name}</strong>
-            </span>
-          </div>
-        </Modal.Title>
-      </Modal.Header>
-      <Modal.Body>
-        {show && (
-          <DatasourceEditor
-            showLoadingForImport
-            height={500}
-            datasource={currentDatasource}
-            onChange={onDatasourceChange}
-          />
-        )}
-      </Modal.Body>
-      <Modal.Footer>
-        <span className="float-left">
-          <Button
-            buttonSize="sm"
-            buttonStyle="default"
-            target="_blank"
-            href={currentDatasource.edit_url || currentDatasource.url}
-          >
-            {t('Use Legacy Datasource Editor')}
-          </Button>
+    <StyledDatasourceModal
+      show={show}
+      onHide={onHide}
+      title={
+        <span>
+          {t('Edit Dataset ')}
+          <strong>{currentDatasource.table_name}</strong>
         </span>
-
-        <span className="float-right">
+      }
+      footer={
+        <>
+          {isFeatureEnabled(FeatureFlag.ENABLE_REACT_CRUD_VIEWS) && (
+            <Button
+              buttonSize="sm"
+              buttonStyle="default"
+              data-test="datasource-modal-legacy-edit"
+              className="m-r-5"
+              onClick={() => {
+                window.location.href =
+                  currentDatasource.edit_url || currentDatasource.url;
+              }}
+            >
+              {t('Use Legacy Datasource Editor')}
+            </Button>
+          )}
           <Button
             buttonSize="sm"
             buttonStyle="primary"
@@ -202,12 +200,24 @@ const DatasourceModal: FunctionComponent<DatasourceModalProps> = ({
           >
             {t('Save')}
           </Button>
-          <Button buttonSize="sm" onClick={onHide}>
+          <Button
+            data-test="datasource-modal-cancel"
+            buttonSize="sm"
+            onClick={onHide}
+          >
             {t('Cancel')}
           </Button>
           <Dialog ref={dialog} />
-        </span>
-      </Modal.Footer>
+        </>
+      }
+      responsive
+    >
+      <DatasourceEditor
+        showLoadingForImport
+        height={500}
+        datasource={currentDatasource}
+        onChange={onDatasourceChange}
+      />
     </StyledDatasourceModal>
   );
 };

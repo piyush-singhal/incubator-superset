@@ -19,7 +19,9 @@
 import json
 from typing import List, Optional
 from datetime import datetime
+from io import BytesIO
 from unittest import mock
+from zipfile import is_zipfile
 
 import humanize
 import prison
@@ -27,6 +29,7 @@ import pytest
 from sqlalchemy import and_
 from sqlalchemy.sql import func
 
+from superset.connectors.sqla.models import SqlaTable
 from superset.utils.core import get_example_database
 from tests.fixtures.unicode_dashboard import load_unicode_dashboard_with_slice
 from tests.test_app import app
@@ -620,16 +623,48 @@ class TestChartApi(SupersetTestCase, ApiOwnersTestCaseMixin):
         data = json.loads(rv.data.decode("utf-8"))
         self.assertEqual(data["count"], 5)
 
+    @pytest.fixture()
+    def load_charts(self):
+        with app.app_context():
+            admin = self.get_user("admin")
+            energy_table = (
+                db.session.query(SqlaTable)
+                .filter_by(table_name="energy_usage")
+                .one_or_none()
+            )
+            energy_table_id = 1
+            if energy_table:
+                energy_table_id = energy_table.id
+            chart1 = self.insert_chart(
+                "foo_a", [admin.id], energy_table_id, description="ZY_bar"
+            )
+            chart2 = self.insert_chart(
+                "zy_foo", [admin.id], energy_table_id, description="desc1"
+            )
+            chart3 = self.insert_chart(
+                "foo_b", [admin.id], energy_table_id, description="desc1zy_"
+            )
+            chart4 = self.insert_chart(
+                "foo_c", [admin.id], energy_table_id, viz_type="viz_zy_"
+            )
+            chart5 = self.insert_chart(
+                "bar", [admin.id], energy_table_id, description="foo"
+            )
+
+            yield
+            # rollback changes
+            db.session.delete(chart1)
+            db.session.delete(chart2)
+            db.session.delete(chart3)
+            db.session.delete(chart4)
+            db.session.delete(chart5)
+            db.session.commit()
+
+    @pytest.mark.usefixtures("load_charts")
     def test_get_charts_custom_filter(self):
         """
         Chart API: Test get charts custom filter
         """
-        admin = self.get_user("admin")
-        chart1 = self.insert_chart("foo_a", [admin.id], 1, description="ZY_bar")
-        chart2 = self.insert_chart("zy_foo", [admin.id], 1, description="desc1")
-        chart3 = self.insert_chart("foo_b", [admin.id], 1, description="desc1zy_")
-        chart4 = self.insert_chart("foo_c", [admin.id], 1, viz_type="viz_zy_")
-        chart5 = self.insert_chart("bar", [admin.id], 1, description="foo")
 
         arguments = {
             "filters": [{"col": "slice_name", "opr": "chart_all_text", "value": "zy_"}],
@@ -658,6 +693,8 @@ class TestChartApi(SupersetTestCase, ApiOwnersTestCaseMixin):
             self.assertEqual(item["slice_name"], expected_response[index]["slice_name"])
             self.assertEqual(item["viz_type"], expected_response[index]["viz_type"])
 
+    @pytest.mark.usefixtures("load_charts")
+    def test_admin_gets_filtered_energy_slices(self):
         # test filtering on datasource_name
         arguments = {
             "filters": [
@@ -666,27 +703,31 @@ class TestChartApi(SupersetTestCase, ApiOwnersTestCaseMixin):
             "keys": ["none"],
             "columns": ["slice_name"],
         }
+        self.login(username="admin")
+
         uri = f"api/v1/chart/?q={prison.dumps(arguments)}"
         rv = self.get_assert_metric(uri, "get_list")
         self.assertEqual(rv.status_code, 200)
         data = json.loads(rv.data.decode("utf-8"))
         self.assertEqual(data["count"], 8)
 
-        self.logout()
+    @pytest.mark.usefixtures("load_charts")
+    def test_user_gets_none_filtered_energy_slices(self):
+        # test filtering on datasource_name
+        arguments = {
+            "filters": [
+                {"col": "slice_name", "opr": "chart_all_text", "value": "energy",}
+            ],
+            "keys": ["none"],
+            "columns": ["slice_name"],
+        }
+
         self.login(username="gamma")
         uri = f"api/v1/chart/?q={prison.dumps(arguments)}"
         rv = self.get_assert_metric(uri, "get_list")
         self.assertEqual(rv.status_code, 200)
         data = json.loads(rv.data.decode("utf-8"))
         self.assertEqual(data["count"], 0)
-
-        # rollback changes
-        db.session.delete(chart1)
-        db.session.delete(chart2)
-        db.session.delete(chart3)
-        db.session.delete(chart4)
-        db.session.delete(chart5)
-        db.session.commit()
 
     @pytest.mark.usefixtures("create_charts")
     def test_get_charts_favorite_filter(self):
@@ -777,6 +818,30 @@ class TestChartApi(SupersetTestCase, ApiOwnersTestCaseMixin):
         rv = self.post_assert_metric(CHART_DATA_URI, request_payload, "data")
         self.assertEqual(rv.status_code, 200)
         data = json.loads(rv.data.decode("utf-8"))
+        self.assertEqual(data["result"][0]["rowcount"], 45)
+
+    def test_chart_data_applied_time_extras(self):
+        """
+        Chart data API: Test chart data query with applied time extras
+        """
+        self.login(username="admin")
+        table = self.get_table_by_name("birth_names")
+        request_payload = get_query_context(table.name, table.id, table.type)
+        request_payload["queries"][0]["applied_time_extras"] = {
+            "__time_range": "100 years ago : now",
+            "__time_origin": "now",
+        }
+        rv = self.post_assert_metric(CHART_DATA_URI, request_payload, "data")
+        self.assertEqual(rv.status_code, 200)
+        data = json.loads(rv.data.decode("utf-8"))
+        self.assertEqual(
+            data["result"][0]["applied_filters"],
+            [{"column": "gender"}, {"column": "__time_range"},],
+        )
+        self.assertEqual(
+            data["result"][0]["rejected_filters"],
+            [{"column": "__time_origin", "reason": "not_druid_datasource"},],
+        )
         self.assertEqual(data["result"][0]["rowcount"], 45)
 
     def test_chart_data_limit_offset(self):
@@ -923,7 +988,6 @@ class TestChartApi(SupersetTestCase, ApiOwnersTestCaseMixin):
             }
         ]
         rv = self.post_assert_metric(CHART_DATA_URI, request_payload, "data")
-        print(rv.data)
         self.assertEqual(rv.status_code, 200)
         response_payload = json.loads(rv.data.decode("utf-8"))
         result = response_payload["result"][0]
@@ -1035,3 +1099,44 @@ class TestChartApi(SupersetTestCase, ApiOwnersTestCaseMixin):
         result = response_payload["result"][0]["query"]
         if get_example_database().backend != "presto":
             assert "('boy' = 'boy')" in result
+
+    def test_export_chart(self):
+        """
+        Chart API: Test export dataset
+        """
+        example_chart = db.session.query(Slice).all()[0]
+        argument = [example_chart.id]
+        uri = f"api/v1/chart/export/?q={prison.dumps(argument)}"
+
+        self.login(username="admin")
+        rv = self.get_assert_metric(uri, "export")
+
+        assert rv.status_code == 200
+
+        buf = BytesIO(rv.data)
+        assert is_zipfile(buf)
+
+    def test_export_chart_not_found(self):
+        """
+        Dataset API: Test export dataset not found
+        """
+        # Just one does not exist and we get 404
+        argument = [-1, 1]
+        uri = f"api/v1/chart/export/?q={prison.dumps(argument)}"
+        self.login(username="admin")
+        rv = self.get_assert_metric(uri, "export")
+
+        assert rv.status_code == 404
+
+    def test_export_chart_gamma(self):
+        """
+        Dataset API: Test export dataset has gamma
+        """
+        example_chart = db.session.query(Slice).all()[0]
+        argument = [example_chart.id]
+        uri = f"api/v1/chart/export/?q={prison.dumps(argument)}"
+
+        self.login(username="gamma")
+        rv = self.client.get(uri)
+
+        assert rv.status_code == 404

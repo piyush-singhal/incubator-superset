@@ -254,7 +254,6 @@ function styled<
         selectRef.current = stateManager;
       }
     };
-
     return (
       <MaybeSortableSelect
         ref={setRef}
@@ -293,5 +292,9 @@ export const Select = styled(WindowedSelect);
 export const AsyncSelect = styled(WindowedAsyncSelect);
 export const CreatableSelect = styled(WindowedCreatableSelect);
 export const AsyncCreatableSelect = styled(WindowedAsyncCreatableSelect);
-export const PaginatedSelect = withAsyncPaginate(styled(BasicSelect));
+export const PaginatedSelect = withAsyncPaginate(
+  styled<OptionTypeBase, ComponentType<SelectProps<OptionTypeBase>>>(
+    BasicSelect,
+  ),
+);
 export default Select;

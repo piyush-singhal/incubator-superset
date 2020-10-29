@@ -19,7 +19,7 @@
 import { t, styled } from '@superset-ui/core';
 import React, { useState } from 'react';
 import { FormGroup, FormControl, FormControlProps } from 'react-bootstrap';
-import Modal from 'src/components/Modal';
+import Modal from 'src/common/components/Modal';
 import FormLabel from 'src/components/FormLabel';
 
 const StyleFormGroup = styled(FormGroup)`
@@ -67,6 +67,7 @@ export default function DeleteModal({
       <StyleFormGroup>
         <FormLabel htmlFor="delete">{t('type "delete" to confirm')}</FormLabel>
         <FormControl
+          data-test="delete-modal-input"
           id="delete"
           type="text"
           bsSize="sm"

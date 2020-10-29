@@ -23,10 +23,9 @@ import { isFeatureEnabled, FeatureFlag } from 'src/featureFlags';
 import { createFetchRelated, createErrorHandler } from 'src/views/CRUD/utils';
 import { useListViewResource, useFavoriteStatus } from 'src/views/CRUD/hooks';
 import ConfirmStatusChange from 'src/components/ConfirmStatusChange';
-import SubMenu from 'src/components/Menu/SubMenu';
-import AvatarIcon from 'src/components/AvatarIcon';
+import SubMenu, { SubMenuProps } from 'src/components/Menu/SubMenu';
+import FacePile from 'src/components/FacePile';
 import ListView, { ListViewProps, Filters } from 'src/components/ListView';
-import ExpandableList from 'src/components/ExpandableList';
 import Owner from 'src/types/Owner';
 import withToasts from 'src/messageToasts/enhancers/withToasts';
 import Icon from 'src/components/Icon';
@@ -35,6 +34,7 @@ import FaveStar from 'src/components/FaveStar';
 import PropertiesModal from 'src/dashboard/components/PropertiesModal';
 import ListViewCard from 'src/components/ListViewCard';
 import { Dropdown, Menu } from 'src/common/components';
+import TooltipWrapper from 'src/components/TooltipWrapper';
 
 const PAGE_SIZE = 25;
 const FAVESTAR_BASE_URL = '/superset/favstar/Dashboard';
@@ -86,6 +86,7 @@ function DashboardList(props: DashboardListProps) {
     null,
   );
 
+  const canCreate = hasPerm('can_add');
   const canEdit = hasPerm('can_edit');
   const canDelete = hasPerm('can_delete');
   const canExport = hasPerm('can_mulexport');
@@ -169,8 +170,6 @@ function DashboardList(props: DashboardListProps) {
         fetchFaveStar={fetchFaveStar}
         saveFaveStar={saveFaveStar}
         isStarred={!!favoriteStatusRef.current[id]}
-        height={20}
-        width={20}
       />
     );
   }
@@ -186,6 +185,7 @@ function DashboardList(props: DashboardListProps) {
         Header: '',
         id: 'favorite',
         disableSortBy: true,
+        size: 'xs',
       },
       {
         Cell: ({
@@ -208,19 +208,17 @@ function DashboardList(props: DashboardListProps) {
         }: any) => <a href={changedByUrl}>{changedByName}</a>,
         Header: t('Modified By'),
         accessor: 'changed_by.first_name',
+        size: 'xl',
       },
       {
         Cell: ({
           row: {
             original: { published },
           },
-        }: any) => (
-          <span className="no-wrap">
-            {published ? <Icon name="check" /> : ''}
-          </span>
-        ),
-        Header: t('Published'),
+        }: any) => (published ? t('Published') : t('Draft')),
+        Header: t('Status'),
         accessor: 'published',
+        size: 'xl',
       },
       {
         Cell: ({
@@ -230,11 +228,7 @@ function DashboardList(props: DashboardListProps) {
         }: any) => <span className="no-wrap">{changedOn}</span>,
         Header: t('Modified'),
         accessor: 'changed_on_delta_humanized',
-      },
-      {
-        accessor: 'slug',
-        hidden: true,
-        disableSortBy: true,
+        size: 'xl',
       },
       {
         Cell: ({
@@ -246,33 +240,25 @@ function DashboardList(props: DashboardListProps) {
         Header: t('Created By'),
         accessor: 'created_by',
         disableSortBy: true,
+        size: 'xl',
       },
       {
         Cell: ({
           row: {
-            original: { owners },
+            original: { owners = [] },
           },
-        }: any) => (
-          <ExpandableList
-            items={owners.map(
-              ({ first_name: firstName, last_name: lastName }: any) =>
-                `${firstName} ${lastName}`,
-            )}
-            display={2}
-          />
-        ),
+        }: any) => <FacePile users={owners} />,
         Header: t('Owners'),
         accessor: 'owners',
         disableSortBy: true,
+        size: 'xl',
       },
       {
         Cell: ({ row: { original } }: any) => {
           const handleDelete = () => handleDashboardDelete(original);
           const handleEdit = () => openDashboardEditModal(original);
           const handleExport = () => handleBulkDashboardExport([original]);
-          if (!canEdit && !canDelete && !canExport) {
-            return null;
-          }
+
           return (
             <span className="actions">
               {canDelete && (
@@ -287,42 +273,64 @@ function DashboardList(props: DashboardListProps) {
                   onConfirm={handleDelete}
                 >
                   {confirmDelete => (
-                    <span
-                      role="button"
-                      tabIndex={0}
-                      className="action-button"
-                      onClick={confirmDelete}
+                    <TooltipWrapper
+                      label="delete-action"
+                      tooltip={t('Delete')}
+                      placement="bottom"
                     >
-                      <Icon name="trash" />
-                    </span>
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        className="action-button"
+                        onClick={confirmDelete}
+                      >
+                        <Icon
+                          data-test="dashboard-list-trash-icon"
+                          name="trash"
+                        />
+                      </span>
+                    </TooltipWrapper>
                   )}
                 </ConfirmStatusChange>
               )}
               {canExport && (
-                <span
-                  role="button"
-                  tabIndex={0}
-                  className="action-button"
-                  onClick={handleExport}
+                <TooltipWrapper
+                  label="export-action"
+                  tooltip={t('Export')}
+                  placement="bottom"
                 >
-                  <Icon name="share" />
-                </span>
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    className="action-button"
+                    onClick={handleExport}
+                  >
+                    <Icon name="share" />
+                  </span>
+                </TooltipWrapper>
               )}
               {canEdit && (
-                <span
-                  role="button"
-                  tabIndex={0}
-                  className="action-button"
-                  onClick={handleEdit}
+                <TooltipWrapper
+                  label="edit-action"
+                  tooltip={t('Edit')}
+                  placement="bottom"
                 >
-                  <Icon name="edit-alt" />
-                </span>
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    className="action-button"
+                    onClick={handleEdit}
+                  >
+                    <Icon name="edit-alt" />
+                  </span>
+                </TooltipWrapper>
               )}
             </span>
           );
         },
         Header: t('Actions'),
         id: 'actions',
+        hidden: !canEdit && !canDelete && !canExport,
         disableSortBy: true,
       },
     ],
@@ -331,7 +339,7 @@ function DashboardList(props: DashboardListProps) {
 
   const filters: Filters = [
     {
-      Header: 'Owner',
+      Header: t('Owner'),
       id: 'owners',
       input: 'select',
       operator: 'rel_m_m',
@@ -371,18 +379,18 @@ function DashboardList(props: DashboardListProps) {
       paginate: true,
     },
     {
-      Header: 'Published',
+      Header: t('Status'),
       id: 'published',
       input: 'select',
       operator: 'eq',
       unfilteredLabel: 'Any',
       selects: [
-        { label: 'Published', value: true },
-        { label: 'Unpublished', value: false },
+        { label: t('Published'), value: true },
+        { label: t('Unpublished'), value: false },
       ],
     },
     {
-      Header: 'Search',
+      Header: t('Search'),
       id: 'dashboard_title',
       input: 'search',
       operator: 'title_or_slug',
@@ -432,7 +440,11 @@ function DashboardList(props: DashboardListProps) {
                   className="action-button"
                   onClick={confirmDelete}
                 >
-                  <ListViewCard.MenuIcon name="trash" /> Delete
+                  <ListViewCard.MenuIcon
+                    data-test="dashboard-list-view-card-trash-icon"
+                    name="trash"
+                  />{' '}
+                  Delete
                 </div>
               )}
             </ConfirmStatusChange>
@@ -449,6 +461,7 @@ function DashboardList(props: DashboardListProps) {
         )}
         {canEdit && (
           <Menu.Item
+            data-test="dashboard-list-edit-option"
             role="button"
             tabIndex={0}
             onClick={() => openDashboardEditModal(dashboard)}
@@ -473,16 +486,7 @@ function DashboardList(props: DashboardListProps) {
           'Last modified %s',
           dashboard.changed_on_delta_humanized,
         )}
-        coverLeft={(dashboard.owners || []).slice(0, 5).map(owner => (
-          <AvatarIcon
-            key={owner.id}
-            uniqueKey={`${owner.username}-${dashboard.id}`}
-            firstName={owner.first_name}
-            lastName={owner.last_name}
-            iconSize={24}
-            textSize={9}
-          />
-        ))}
+        coverLeft={<FacePile users={dashboard.owners || []} />}
         actions={
           <ListViewCard.Actions>
             {renderFaveStar(dashboard.id)}
@@ -495,22 +499,30 @@ function DashboardList(props: DashboardListProps) {
     );
   }
 
+  const subMenuButtons: SubMenuProps['buttons'] = [];
+  if (canDelete || canExport) {
+    subMenuButtons.push({
+      name: t('Bulk Select'),
+      buttonStyle: 'secondary',
+      onClick: toggleBulkSelect,
+    });
+  }
+  if (canCreate) {
+    subMenuButtons.push({
+      name: (
+        <>
+          <i className="fa fa-plus" /> {t('Dashboard')}
+        </>
+      ),
+      buttonStyle: 'primary',
+      onClick: () => {
+        window.location.assign('/dashboard/new');
+      },
+    });
+  }
   return (
     <>
-      <SubMenu
-        name={t('Dashboards')}
-        buttons={
-          canDelete || canExport
-            ? [
-                {
-                  name: t('Bulk Select'),
-                  buttonStyle: 'secondary',
-                  onClick: toggleBulkSelect,
-                },
-              ]
-            : undefined
-        }
-      />
+      <SubMenu name={t('Dashboards')} buttons={subMenuButtons} />
       <ConfirmStatusChange
         title={t('Please confirm')}
         description={t(
